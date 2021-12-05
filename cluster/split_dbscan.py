@@ -45,5 +45,5 @@ class SplitDBSCAN(DBSCAN):
         active_labels = np.unique(self.labels_[within_reach])
 
         # mask indicating all within reach self.labels_
-        active_mask = np.in1d(self.labels_, active_labels)
+        active_mask = np.isin(self.labels_, active_labels)
         return active_mask
