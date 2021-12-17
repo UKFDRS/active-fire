@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 from io import BytesIO
 from dotenv import dotenv_values
-from utils import modis_date
+from utils import fire_date
 
 # Place your LANCE NRT token as variable (NRT_TOKEN) in
 # .env file in project root. The below uses dotenv to read
@@ -74,7 +74,7 @@ class FetchNRT():
         datasets = []
         for day in days_to_fetch:
             dataset = self.day_nrt(day)
-            dataset = modis_date(dataset)
+            dataset = fire_date(dataset)
             datasets.append(dataset)
         nrt_new = pd.concat(datasets)
         self.merge_nrt(nrt_new)
