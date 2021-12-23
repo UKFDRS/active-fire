@@ -3,11 +3,11 @@ import requests
 import pandas as pd
 from io import BytesIO
 from dotenv import dotenv_values
-from utils import fire_date
+from _utils import MCD14DL_dtypes, FireDate
 
 # Place your LANCE NRT token as variable (NRT_TOKEN) in
 # .env file in project root. The below uses dotenv to read
-# the token into config dict.
+# the token.
 
 
 class NRTAuth(requests.auth.AuthBase):
@@ -69,19 +69,30 @@ class FetchNRT():
         self.logger.info('nrt end datetime: ' +
                          dataset.date.max().strftime('%Y-%m-%d %H:%M'))
 
+    def prepare_nrt_dataset(selt, dataset):
+        dataset['type'] = 4
+        dataset = dataset[MCD14DL_dtypes.keys()]
+        dataset = dataset.astype(MCD14DL_dtypes)
+        dataset['date'] = FireDate.fire_dates(dataset)
+        dataset = dataset.sort_values(by='date').reset_index()
+        return dataset
+
     def fetch(self):
         days_to_fetch = pd.date_range(self.nrt_last_date(), self.date_now)
         datasets = []
         for day in days_to_fetch:
+            print('fetching :', day)
             dataset = self.day_nrt(day)
-            dataset = fire_date(dataset)
             datasets.append(dataset)
         nrt_new = pd.concat(datasets)
+        nrt_new = self.prepare_nrt_dataset(nrt_new)
         self.merge_nrt(nrt_new)
 
     def merge_nrt(self, nrt_new):
         nrt_completed = pd.read_parquet(self.nrt_dataset_path)
         self.logger.info(f'adding {nrt_new.shape[0]} rows to nrt completed')
+        index_increment = nrt_completed.index.stop
+        nrt_new.index = nrt_new.index + index_increment
         nrt_updated = pd.concat([nrt_completed, nrt_new])
         tot_rows = nrt_updated.shape[0]
         nrt_updated = nrt_updated.drop_duplicates()
@@ -91,6 +102,7 @@ class FetchNRT():
         self.log_nrt_end_date(nrt_updated)
 
 
+# TODO run the bellow setting dtypes when reading csv
 config = dotenv_values('../.env')
 nrt = FetchNRT(**config)
 nrt.fetch()

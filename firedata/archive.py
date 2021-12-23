@@ -1,54 +1,22 @@
 import os
 import glob
 import pandas as pd
-from utils import fire_date
-
-columns_dtypes = {
-        'latitude': 'float32',
-        'longitude': 'float32',
-        'scan': 'float32',
-        'track': 'float32',
-        'satellite': object,
-        'instrument': object,
-        'frp': 'float32',
-        'daynight': object,
-        }
-
-data_types = {
-        'latitude': 'float32',
-        'longitude': 'float32',
-        'brightness': 'float32',
-        'acq_date': object,
-        'acq_time': object,
-        'scan': 'float32',
-        'track': 'float32',
-        'satellite': object,
-        'instrument': object,
-        'confidence': 'int8',
-        'version': 'float32',
-        'bright_t31': 'float32',
-        'frp': 'float32',
-        'daynight': object,
-        'type': 'int8',
-        }
+from _utils import MCD14DL_dtypes, FireDate
 
 
-def prepare_modis_archive(data_path, year, fname, columns_dtypes):
-    print(f'processing modis year {year}')
-    # fname = os.path.join(data_path, f'fire_archive_M6_{year}.csv')
-    dfr = pd.read_csv(fname)
+def parse_modis(fname, index_increment, MCD14DL_dtypes):
+    dfr = pd.read_csv(fname, dtype=MCD14DL_dtypes)
     # Leave the bellow for later stages
     # drop low confidence detections
     # dfr = dfr.loc[dfr.confidence >= 30, :].copy()
     # keeping only "vegetation fires"
     # dfr = dfr.loc[dfr.type == 0, :].copy()
-    dfr = fire_date(dfr)
-    dfr.set_index('date', drop=True, inplace=True)
-    dfr.sort_index(inplace=True)
-    dfr = dfr[columns_dtypes.keys()]
-    dfr = dfr.astype(columns_dtypes)
-    dfr.to_parquet(os.path.join(data_path,
-                                f'modis_archive_{year}.parquet'))
+    dfr.index = dfr.index + index_increment
+    dfr = dfr[MCD14DL_dtypes.keys()]
+    dfr = dfr.astype(MCD14DL_dtypes)
+    dfr['date'] = FireDate.fire_dates(dfr)
+    dfr = dfr.sort_values(by='date').reset_index()
+    return dfr
 
 
 def prepare_viirs_snpp(data_path):
@@ -69,7 +37,7 @@ def prepare_viirs_snpp(data_path):
         dfr = fire_date(dfr)
         dfr.set_index('date', drop=True, inplace=True)
         dfr.sort_index(inplace=True)
-        dfr = dfr[columns_dtypes.keys()]
+        dfr = dfr[MCD14DL_dtypes.keys()]
 
 
 def prepare_modis_archive_all_years():
@@ -77,19 +45,34 @@ def prepare_modis_archive_all_years():
     Pre-processing of MODIS archive active fire dataset.
     Reads yearly csv files and writes parquet.
     """
-    fnames = glob.glob('data/fire_archive_M6_*.csv')
-    for fname in fnames:
-        year = fname.split('.')[0].split('_')[-1]
+    index_increment = 0
+    years = range(2002, 2022, 1)
+    for year in years:
+        fname = f'data/fire_archive_M6_{year}.csv'
         print(fname, year)
-        prepare_modis_archive('data', year, fname, columns_dtypes)
+        dfr = parse_modis(fname, index_increment, MCD14DL_dtypes)
+        index_increment = dfr.index.stop
+        print(index_increment, dfr.index)
+        dfr.to_parquet(os.path.join('data',
+                       f'modis_archive_{year}.parquet'))
 
 
-def prepare_modis_nrt(nrt_fname):
+def prepare_modis_nrt(nrt_fname, last_archive_fname):
     nrt = pd.read_csv(nrt_fname)
-    nrt = fire_date(nrt)
+    nrt['type'] = 4
+    nrt = nrt[MCD14DL_dtypes.keys()]
+    nrt = nrt.astype(MCD14DL_dtypes)
+    nrt['date'] = FireDate.fire_dates(nrt)
+    nrt = nrt.sort_values(by='date').reset_index()
+    index_increment = pd.read_parquet(last_archive_fname).index.stop
+    nrt.index = nrt.index + index_increment
+    # TODO defer the bellow to later stages?
     nrt.to_parquet('data/nrt_complete.parquet')
 
 
 # prepare_modis_archive_all_years()
-# nrt_fname = '/home/tadas/activefire/firedata/data/fire_nrt_M-C61_238232.csv'
-# prepare_modis_nrt(nrt_fname)
+# TODO run the bellow setting dtypes when reading csv
+nrt_fname = '/home/tadas/activefire/firedata/data/fire_nrt_M-C61_238232.csv'
+last_archive_fname = '/home/tadas/activefire/firedata/data/modis_archive_2021.parquet'
+prepare_modis_nrt(nrt_fname, last_archive_fname)
+# dfr = pd.read_parquet('data/modis_archive_2002.parquet')
