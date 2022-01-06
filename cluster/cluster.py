@@ -77,9 +77,9 @@ class ModisGrid(object):
         x = self.earth_r * lon_rad * np.cos(lat_rad)
         y = self.earth_r * lat_rad
         tile_h = (np.floor((x - self.x_min) /
-                         self.tile_size)).astype(int)
+                  self.tile_size)).astype(int)
         tile_v = (np.floor((self.y_max - y) /
-                         self.tile_size)).astype(int)
+                  self.tile_size)).astype(int)
         i_top = (self.y_max - y) % self.tile_size
         j_top = (x - self.x_min) % self.tile_size
         indy = (np.floor((i_top / self.w_size) - 0.5)).astype(int)

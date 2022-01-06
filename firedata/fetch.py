@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 from io import BytesIO
 from dotenv import dotenv_values
-from _utils import MCD14DL_dtypes, FireDate
+from _utils import MCD14DL_nrt_dtypes, FireDate
 
 # Place your LANCE NRT token as variable (NRT_TOKEN) in
 # .env file in project root. The below uses dotenv to read
@@ -62,7 +62,8 @@ class FetchNRT():
             self.logger.info('fetched nrt for day: ' +
                              date.strftime('%Y-%m-%d'))
         except requests.exceptions.HTTPError as err:
-            raise SystemExit(err)
+            dfr = None
+            # raise SystemExit(err)
         return dfr
 
     def log_nrt_end_date(self, dataset):
@@ -70,11 +71,11 @@ class FetchNRT():
                          dataset.date.max().strftime('%Y-%m-%d %H:%M'))
 
     def prepare_nrt_dataset(selt, dataset):
+        dataset['instrument'] = 'MODIS'
+        dataset = dataset.astype(MCD14DL_nrt_dtypes)
         dataset['type'] = 4
-        dataset = dataset[MCD14DL_dtypes.keys()]
-        dataset = dataset.astype(MCD14DL_dtypes)
         dataset['date'] = FireDate.fire_dates(dataset)
-        dataset = dataset.sort_values(by='date').reset_index()
+        dataset = dataset.sort_values(by='date').reset_index(drop=True)
         return dataset
 
     def fetch(self):
@@ -83,7 +84,8 @@ class FetchNRT():
         for day in days_to_fetch:
             print('fetching :', day)
             dataset = self.day_nrt(day)
-            datasets.append(dataset)
+            if dataset is not None:
+                datasets.append(dataset)
         nrt_new = pd.concat(datasets)
         nrt_new = self.prepare_nrt_dataset(nrt_new)
         self.merge_nrt(nrt_new)
@@ -91,13 +93,14 @@ class FetchNRT():
     def merge_nrt(self, nrt_new):
         nrt_completed = pd.read_parquet(self.nrt_dataset_path)
         self.logger.info(f'adding {nrt_new.shape[0]} rows to nrt completed')
-        index_increment = nrt_completed.index.stop
-        nrt_new.index = nrt_new.index + index_increment
+        index_increment = nrt_completed.index.start
         nrt_updated = pd.concat([nrt_completed, nrt_new])
         tot_rows = nrt_updated.shape[0]
         nrt_updated = nrt_updated.drop_duplicates()
         rows_dropped = tot_rows - nrt_updated.shape[0]
         self.logger.info(f'dropped {rows_dropped} duplicate rows')
+        nrt_updated = nrt_updated.reset_index(drop=True)
+        nrt_updated.index = nrt_updated.index + index_increment
         nrt_updated.to_parquet(self.nrt_dataset_path)
         self.log_nrt_end_date(nrt_updated)
 

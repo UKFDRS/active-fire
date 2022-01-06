@@ -20,20 +20,13 @@ class ModisGrid(object):
         self.earth_r = 6371007.181
         # DBSCAN eps in radians = 650 meters / earth radius
         self.eps = 750 / self.earth_r
-        self.basedate = pd.Timestamp('2002-01-01')
+        self.base_date = pd.Timestamp('2002-01-01')
 
-
-    def add_days_since(self, dfr):
-        """Calculates days from 2002-01-01 to January 1st of
-        the year of the annual dataframe
+    def days_since_base_date(self, dates):
+        """Calculates days from base_date (start of the record)
 
         Args:
-            dfr (dataframe): dataframe with annual burned data.
-            Must have 'year' column, 'date' column with day of year,
-            or datetime date. The function attempts to convert
-            column 'date' to day of year, and failing this it is
-            assumed that the 'date' column contains day of year.
-            Must by passed data from a single year only for this to make sense.
+            dates (array like): array with
 
         Returns:
             dfr (datafram): the same dateframe with added column
@@ -44,7 +37,6 @@ class ModisGrid(object):
         day_of_year = dfr.index.dayofyear
         dfr['day_since'] = day_of_year + add_days
         return dfr
-
 
     def modis_sinusoidal_grid_index(self, dfr):
         """
