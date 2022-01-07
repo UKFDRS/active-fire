@@ -49,7 +49,7 @@ class FetchNRT():
     def day_url(self, date):
         year = date.year
         doy = date.day_of_year
-        day_url = f'MODIS_C6_1_Global_MCD14DL_NRT_{year}{doy}.txt'
+        day_url = f'MODIS_C6_1_Global_MCD14DL_NRT_{year}{doy:03d}.txt'
         return self.base_url + day_url
 
     def day_nrt(self, date):
@@ -87,6 +87,7 @@ class FetchNRT():
             if dataset is not None:
                 datasets.append(dataset)
         nrt_new = pd.concat(datasets)
+        # return nrt_new
         nrt_new = self.prepare_nrt_dataset(nrt_new)
         self.merge_nrt(nrt_new)
 
@@ -108,5 +109,6 @@ class FetchNRT():
 # TODO run the bellow setting dtypes when reading csv
 config = dotenv_values('../.env')
 nrt = FetchNRT(**config)
-nrt.fetch()
+dfr = nrt.fetch()
+
 # nrt.merge_nrt(nrt_new)
