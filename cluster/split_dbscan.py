@@ -34,7 +34,8 @@ class SplitDBSCAN(DBSCAN):
             active_mask : (bool) a mask with True values indicating
             self.labels_ of active clusters.
         """
-        # chunk_edge represents max value in chunk along split_dimension
+        # chunk_edge represents max value in chunk along the 
+        # split_dimension
         chunk_edge = X[:, self.split_dim].max()
 
         # whithin reach is a mask of samples which are within edge_eps

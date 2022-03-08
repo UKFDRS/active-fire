@@ -14,6 +14,25 @@ select_columns = {
     'type': 'int8',
     }
 
+VIIRS_dtypes = {
+    'latitude': 'float32',
+    'longitude': 'float32',
+    'brightness': 'float32',
+    'acq_date': object,
+    'acq_time': object,
+    'scan': 'float32',
+    'track': 'float32',
+    'satellite': object,
+    'instrument': object,
+    'confidence': object, 
+    'version': 'int8',
+    'bright_t31': 'float32',
+    'frp': 'float32',
+    'daynight': object,
+    'type': 'int8',
+    }
+
+
 MCD14DL_dtypes = {
     'latitude': 'float32',
     'longitude': 'float32',
@@ -49,13 +68,30 @@ MCD14DL_nrt_dtypes = {
     'daynight': object,
     }
 
+def spatial_subset_dfr(dfr, bbox):
+    """
+    Selects data within spatial bbox. bbox coords must be given as
+    positive values for the Northern hemisphere, and negative for
+    Southern. West and East both positive - Note - the method is
+    naive and will only work for bboxes fully fitting in the Eastern hemisphere!!!
+    Args:
+        dfr - pandas dataframe
+        bbox - (list) [North, West, South, East]
+    Returns:
+        pandas dataframe
+    """
+    dfr = dfr[(dfr['latitude'] < bbox[0]) &
+                            (dfr['latitude'] > bbox[2])]
+    dfr = dfr[(dfr['longitude'] > bbox[1]) &
+                            (dfr['longitude'] < bbox[3])]
+    return dfr
 
 class FireDate(object):
     """Class for datetime conversions
     """
 
     def __init__(self, base_date='2002-01-01'):
-        self.base_date = base_date
+        self.base_date = pd.Timestamp(base_date, tz='utc')
 
     @classmethod
     def fire_dates(self, dfr):
@@ -69,22 +105,14 @@ class FireDate(object):
         """Calculates days from base_date
 
         Args:
-            dfr (dataframe): dataframe with annual burned data.
-            Must have 'year' column, 'date' column with day of year,
-            or datetime date. The function attempts to convert
-            column 'date' to day of year, and failing this it is
-            assumed that the 'date' column contains day of year.
-            Must by passed data from a single year only for this to make sense.
+            dates (array like): pandas timedelta objects with dates
 
         Returns:
-            dfr (datafram): the same dateframe with added column
-            'days_since' with total days from 2002-01-01 to the day of burn.
+            day_since : (array): with total days from 
+            self.base_date to the date of fire detection.
         """
-        year_date = pd.Timestamp('{0}-01-01'.format(dates.year[0]))
-        add_days = (year_date - self.base_date).days
-        day_of_year = dates.index.dayofyear
-        dates['day_since'] = day_of_year + add_days
-        return dates
+        day_since = (dates - self.base_date).dt.days
+        return day_since
 
 
 class ModisGrid(object):
@@ -106,7 +134,7 @@ class ModisGrid(object):
         self.eps = 750 / self.earth_r
         self.basedate = pd.Timestamp('2002-01-01')
 
-    def modis_sinusoidal_grid_index(self, dfr):
+    def modis_sinusoidal_grid_index(self, longitudes, latitudes):
         """
         Calculates the position of the points given in longitude latitude
         columns on the global MODIS 500 metre resolution sinusoidal grid.
@@ -117,20 +145,19 @@ class ModisGrid(object):
 
         Parameters
         ----------
-        dfr : Pandas DataFrame
-            dataset with longitude and latitude columns.
-            Column names are inferred using regex.
+        longitudes : (array) with longitudes.
+        latitudes : (array) with latitudes.
 
         Returns
         -------
-        dfr : Pandas DataFrame
-            The same dataset with columns 'x' and 'y' containing
-            the grid cell indices in the global Modis 500m grid.
+        index_x : Array with pixel positions on global MODIS grid
+            along x axis.
+        index_y : Array with pixel positions on global MODIS grid
+            along y axis.
+
         """
-        latitude = dfr.filter(regex=r'(?i:l)at')
-        longitude = dfr.filter(regex=r'(?i:l)on')
-        lon_rad = np.deg2rad(longitude)
-        lat_rad = np.deg2rad(latitude)
+        lon_rad = np.deg2rad(longitudes)
+        lat_rad = np.deg2rad(latitudes)
         x = self.earth_r * lon_rad * np.cos(lat_rad)
         y = self.earth_r * lat_rad
         tile_h = (np.floor((x - self.x_min) /
@@ -141,6 +168,6 @@ class ModisGrid(object):
         j_top = (x - self.x_min) % self.tile_size
         indy = (np.floor((i_top / self.w_size) - 0.5)).astype(int)
         indx = (np.floor((j_top / self.w_size) - 0.5)).astype(int)
-        dfr['x'] = indx + (tile_h * 2400)
-        dfr['y'] = indy + (tile_v * 2400)
-        return dfr
+        index_x = indx + (tile_h * 2400)
+        index_y = indy + (tile_v * 2400)
+        return index_x, index_y
