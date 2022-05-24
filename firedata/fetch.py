@@ -22,11 +22,12 @@ class NRTAuth(requests.auth.AuthBase):
 
 
 class FetchNRT():
-    def __init__(self, nrt_token, modis_base_url, nrt_dataset_path):
+    def __init__(self, nrt_token, modis_base_url, nrt_dataset_path, archive_end):
         self.date_now = pd.Timestamp.utcnow()
         self.base_url = modis_base_url
         self.auth = NRTAuth(nrt_token)
         self.nrt_dataset_path = nrt_dataset_path
+        self.archive_end = archive_end
         self.log_file_name = self.__class__.__name__ + '.log'
         logging.basicConfig(filename=self.log_file_name,
                             level=logging.INFO,
@@ -70,7 +71,7 @@ class FetchNRT():
         self.logger.info('nrt end datetime: ' +
                          dataset.date.max().strftime('%Y-%m-%d %H:%M'))
 
-    def prepare_nrt_dataset(selt, dataset):
+    def prepare_nrt_dataset(self, dataset):
         dataset['instrument'] = 'MODIS'
         dataset = dataset.astype(MCD14DL_nrt_dtypes)
         dataset['type'] = 4
@@ -79,7 +80,9 @@ class FetchNRT():
         return dataset
 
     def fetch(self):
-        days_to_fetch = pd.date_range(self.nrt_last_date(), self.date_now)
+        self.logger.info(f'Running fetch')
+        days_to_fetch = pd.date_range(self.nrt_last_date().date(),
+                self.date_now.date())
         datasets = []
         for day in days_to_fetch:
             print('fetching :', day)
@@ -105,10 +108,19 @@ class FetchNRT():
         nrt_updated.to_parquet(self.nrt_dataset_path)
         self.log_nrt_end_date(nrt_updated)
 
+    def drop_in_archive_nrt(self):
+        """Select nrt data starting after archive_end datetime.
+        Used to reduce nrt dataset after archive update.
+        WARNING: overwrites the file at nrt_dataset_path!
+        """
+        nrt = pd.read_parquet(self.nrt_dataset_path)
+        archive_end_dt = pd.Timestamp(self.archive_end)
+        nrt_selected = nrt[nrt.date.values > archive_end_dt]
+        nrt_selected.to_parquet(self.nrt_dataset_path)
 
+
+if __name__ == "__main__":
 # TODO run the bellow setting dtypes when reading csv
-config = dotenv_values('../.env')
-nrt = FetchNRT(**config)
-dfr = nrt.fetch()
-
-# nrt.merge_nrt(nrt_new)
+    config = dotenv_values('../.env')
+    nrt = FetchNRT(**config)
+    dfr = nrt.fetch()
