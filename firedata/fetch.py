@@ -64,7 +64,8 @@ class FetchNRT():
                              date.strftime('%Y-%m-%d'))
         except requests.exceptions.HTTPError as err:
             dfr = None
-            # raise SystemExit(err)
+            self.logger.warning('fetch nrt for day error: ' +
+                             str(err))
         return dfr
 
     def log_nrt_end_date(self, dataset):
@@ -89,10 +90,13 @@ class FetchNRT():
             dataset = self.day_nrt(day)
             if dataset is not None:
                 datasets.append(dataset)
-        nrt_new = pd.concat(datasets)
-        # return nrt_new
-        nrt_new = self.prepare_nrt_dataset(nrt_new)
-        self.merge_nrt(nrt_new)
+        if len(datasets) > 0:
+            nrt_new = pd.concat(datasets)
+            nrt_new = self.prepare_nrt_dataset(nrt_new)
+            self.merge_nrt(nrt_new)
+        else:
+            self.logger.warning(f'Fetch failed, now new data')
+
 
     def merge_nrt(self, nrt_new):
         nrt_completed = pd.read_parquet(self.nrt_dataset_path)
@@ -123,4 +127,4 @@ if __name__ == "__main__":
 # TODO run the bellow setting dtypes when reading csv
     config = dotenv_values('../.env')
     nrt = FetchNRT(**config)
-    dfr = nrt.fetch()
+    nrt.fetch()
