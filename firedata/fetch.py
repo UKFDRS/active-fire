@@ -3,7 +3,8 @@ import requests
 import pandas as pd
 from io import BytesIO
 from dotenv import dotenv_values
-from _utils import MCD14DL_nrt_dtypes, FireDate
+from configparser import ConfigParser
+from _utils import dataset_dtypes, FireDate
 
 # Place your LANCE NRT token as variable (NRT_TOKEN) in
 # .env file in project root. The below uses dotenv to read
@@ -12,7 +13,8 @@ from _utils import MCD14DL_nrt_dtypes, FireDate
 
 class NRTAuth(requests.auth.AuthBase):
     """Implementation of authorization using the LANCE (eosdis)
-    nrt data access token. This is called during http request setup"""
+    nrt (near-real time) data access token.
+    This is called during http request setup"""
     def __init__(self, token):
         self.token = token
 
@@ -22,18 +24,28 @@ class NRTAuth(requests.auth.AuthBase):
 
 
 class FetchNRT():
-    def __init__(self, nrt_token, modis_base_url, nrt_dataset_path, archive_end):
+    """Class for fetching active fires nrt data from FIRMS"""
+    def __init__(self, sensor, nrt_token, base_url, nrt_dataset_path, archive_end):
         self.date_now = pd.Timestamp.utcnow()
-        self.base_url = modis_base_url
+        self.sensor = sensor
         self.auth = NRTAuth(nrt_token)
+        self.base_url = base_url
         self.nrt_dataset_path = nrt_dataset_path
         self.archive_end = archive_end
-        self.log_file_name = self.__class__.__name__ + '.log'
-        logging.basicConfig(filename=self.log_file_name,
-                            level=logging.INFO,
-                            format='%(asctime)s %(levelname)s: %(message)s',
-                            filemode="a")
-        self.logger = logging.getLogger(self.log_file_name)
+        self.logger = self.setup_logger()
+
+    def setup_logger(self):
+        """Sutup and return logger"""
+        log_file_name = self.__class__.__name__ + '.log'
+        logger = logging.getLogger(f'{self.sensor}')
+        logger.setLevel(logging.INFO)
+        # create console handler and set level to debug
+        log_handler = logging.FileHandler(filename=log_file_name)
+        log_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s: %(message)s')
+        log_handler.setFormatter(formatter)
+        logger.addHandler(log_handler)
+        return logger
 
     @classmethod
     def nrt_end_date_log(cls):
@@ -44,16 +56,23 @@ class FetchNRT():
         return pd.Timestamp(last_line.split('NRT last datetime')[1])
 
     def nrt_last_date(self):
+        """Get nrt_completed last date"""
         dataset = pd.read_parquet(self.nrt_dataset_path)
         return dataset.date.max()
 
     def day_url(self, date):
+        """active fire data url for the date"""
         year = date.year
         doy = date.day_of_year
-        day_url = f'MODIS_C6_1_Global_MCD14DL_NRT_{year}{doy:03d}.txt'
-        return self.base_url + day_url
+        return self.base_url + f'{year}{doy:03d}.txt'
 
-    def day_nrt(self, date):
+    def fetch_day_nrt(self, date):
+        """Retrieves nrt active fire data for the day (date) from FIRMS
+        Args:
+            date: Pandas Timestamp.
+        Returns:
+            DataFrame with available active fire data for the day.
+        """
         url = self.day_url(date)
         try:
             response = requests.get(url, auth=self.auth)
@@ -64,7 +83,7 @@ class FetchNRT():
                              date.strftime('%Y-%m-%d'))
         except requests.exceptions.HTTPError as err:
             dfr = None
-            self.logger.warning('fetch nrt for day error: ' +
+            self.logger.warning('fetching error: ' +
                              str(err))
         return dfr
 
@@ -73,44 +92,59 @@ class FetchNRT():
                          dataset.date.max().strftime('%Y-%m-%d %H:%M'))
 
     def prepare_nrt_dataset(self, dataset):
-        dataset['instrument'] = 'MODIS'
-        dataset = dataset.astype(MCD14DL_nrt_dtypes)
+        # In case dataset doesn't have instrument column:
+        dataset['instrument'] = self.sensor
+        dataset = dataset.astype(dataset_dtypes[f'{self.sensor}_nrt_dtypes'])
         dataset['type'] = 4
         dataset['date'] = FireDate.fire_dates(dataset)
+        # Dropping original date/time columns
+        dataset = dataset.drop(['acq_date', 'acq_time'], axis=1)
         dataset = dataset.sort_values(by='date').reset_index(drop=True)
         return dataset
 
     def fetch(self):
+        """The main function performing data fetching. For each day (date)
+        calls fetch_day_nrt method and appends the retrieved datasets.
+        Finally, the fetched data is merged into nrt_completed dataset
+        """
         self.logger.info(f'Running fetch')
         days_to_fetch = pd.date_range(self.nrt_last_date().date(),
                 self.date_now.date())
         datasets = []
-        for day in days_to_fetch:
-            print('fetching :', day)
-            dataset = self.day_nrt(day)
+        for date in days_to_fetch:
+            print('fetching :', date)
+            dataset = self.fetch_day_nrt(date)
             if dataset is not None:
                 datasets.append(dataset)
         if len(datasets) > 0:
             nrt_new = pd.concat(datasets)
             nrt_new = self.prepare_nrt_dataset(nrt_new)
+            self.logger.info(f'fetched {nrt_new.shape[0]} fire detections')
             self.merge_nrt(nrt_new)
         else:
-            self.logger.warning(f'Fetch failed, now new data')
-
+            self.logger.warning(f'Fetch failed, no new data')
 
     def merge_nrt(self, nrt_new):
+        """Merges the fetched data (nrt_new) to nrt_completed and
+        overwrites the nrt_completed file at nrt_dataset_path
+        """
         nrt_completed = pd.read_parquet(self.nrt_dataset_path)
-        self.logger.info(f'adding {nrt_new.shape[0]} rows to nrt completed')
-        index_increment = nrt_completed.index.start
+        # Is index increment needed?
+        index_increment = nrt_completed.index[0]
         nrt_updated = pd.concat([nrt_completed, nrt_new])
         tot_rows = nrt_updated.shape[0]
         nrt_updated = nrt_updated.drop_duplicates()
         rows_dropped = tot_rows - nrt_updated.shape[0]
-        self.logger.info(f'dropped {rows_dropped} duplicate rows')
-        nrt_updated = nrt_updated.reset_index(drop=True)
-        nrt_updated.index = nrt_updated.index + index_increment
-        nrt_updated.to_parquet(self.nrt_dataset_path)
-        self.log_nrt_end_date(nrt_updated)
+        rows_added = nrt_new.shape[0] - rows_dropped
+        if rows_added > 0:
+            self.logger.info(f'Adding {rows_added} active fires to nrt record')
+            # write the updated file
+            nrt_updated = nrt_updated.reset_index(drop=True)
+            nrt_updated.index = nrt_updated.index + index_increment
+            nrt_updated.to_parquet(self.nrt_dataset_path)
+            self.log_nrt_end_date(nrt_updated)
+        else:
+            self.logger.info(f'No new fire detections, snooze')
 
     def drop_in_archive_nrt(self):
         """Select nrt data starting after archive_end datetime.
@@ -124,7 +158,9 @@ class FetchNRT():
 
 
 if __name__ == "__main__":
-# TODO run the bellow setting dtypes when reading csv
-    config = dotenv_values('../.env')
-    nrt = FetchNRT(**config)
-    nrt.fetch()
+    env_vars = dotenv_values('.env')
+    config = ConfigParser()
+    config.read('config.ini')
+    for sensor in ['MODIS', 'VIIRS']:
+        nrt = FetchNRT(sensor, env_vars['nrt_token'], **config[sensor])
+        nrt.fetch()
