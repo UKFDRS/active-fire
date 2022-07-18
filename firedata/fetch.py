@@ -1,7 +1,11 @@
+"""
+Fetches near-real time active fire data from FIRMS.
+"""
 import logging
 import requests
 import pandas as pd
 from io import BytesIO
+from requests.auth import AuthBase
 from dotenv import dotenv_values
 from configparser import ConfigParser
 from _utils import dataset_dtypes, FireDate
@@ -11,7 +15,7 @@ from _utils import dataset_dtypes, FireDate
 # the token.
 
 
-class NRTAuth(requests.auth.AuthBase):
+class NRTAuth(AuthBase):
     """Implementation of authorization using the LANCE (eosdis)
     nrt (near-real time) data access token.
     This is called during http request setup"""
@@ -122,7 +126,7 @@ class FetchNRT():
             self.logger.info(f'fetched {nrt_new.shape[0]} fire detections')
             self.merge_nrt(nrt_new)
         else:
-            self.logger.warning(f'Fetch failed, no new data')
+            self.logger.warning(f'No new data fetched, nothing to add to the record.')
 
     def merge_nrt(self, nrt_new):
         """Merges the fetched data (nrt_new) to nrt_completed and

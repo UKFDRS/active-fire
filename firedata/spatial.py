@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 
 
-
 class ModisGrid(object):
     """Class used for calculating position on MODIS
     sinusoidal grid..."""
