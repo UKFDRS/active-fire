@@ -22,7 +22,7 @@ class ModisGrid(object):
         self.eps = 750 / self.earth_r
         self.base_date = pd.Timestamp('2002-01-01')
 
-    def days_since_base_date(self, dates):
+    def days_since_base_date(self, dfr, dates):
         """Calculates days from base_date (start of the record)
 
         Args:
