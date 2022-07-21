@@ -1,6 +1,7 @@
 """
 Fetches near-real time active fire data from FIRMS.
 """
+import os
 import logging
 import requests
 import pandas as pd
@@ -59,10 +60,6 @@ class FetchNRT():
             last_line = lines[-1]
         return pd.Timestamp(last_line.split('NRT last datetime')[1])
 
-    def nrt_last_date(self):
-        """Get nrt_completed last date"""
-        dataset = pd.read_parquet(self.nrt_dataset_path)
-        return dataset.date.max()
 
     def day_url(self, date):
         """active fire data url for the date"""
@@ -98,7 +95,8 @@ class FetchNRT():
     def prepare_nrt_dataset(self, dataset):
         # In case dataset doesn't have instrument column:
         dataset['instrument'] = self.sensor
-        dataset = dataset.astype(dataset_dtypes[f'{self.sensor}_nrt_dtypes'])
+        sensor_str = self.sensor.split('_')[0]
+        dataset = dataset.astype(dataset_dtypes[f'{sensor_str}_nrt_dtypes'])
         dataset['type'] = 4
         dataset['date'] = FireDate.fire_dates(dataset)
         # Dropping original date/time columns
@@ -106,13 +104,23 @@ class FetchNRT():
         dataset = dataset.sort_values(by='date').reset_index(drop=True)
         return dataset
 
+    def nrt_last_date(self):
+        """Return nrt record end datetime."""
+        try:
+            dataset = pd.read_parquet(self.nrt_dataset_path)
+            nrt_end_date = dataset.date.max()
+        except FileNotFoundError:
+            nrt_end_date = pd.Timestamp(self.archive_end)
+        return nrt_end_date
+
     def fetch(self):
         """The main function performing data fetching. For each day (date)
         calls fetch_day_nrt method and appends the retrieved datasets.
         Finally, the fetched data is merged into nrt_completed dataset
         """
         self.logger.info(f'Running fetch')
-        days_to_fetch = pd.date_range(self.nrt_last_date().date(),
+        nrt_end_date = self.nrt_last_date()
+        days_to_fetch = pd.date_range(nrt_end_date.date(),
                 self.date_now.date())
         datasets = []
         for date in days_to_fetch:
@@ -124,7 +132,11 @@ class FetchNRT():
             nrt_new = pd.concat(datasets)
             nrt_new = self.prepare_nrt_dataset(nrt_new)
             self.logger.info(f'fetched {nrt_new.shape[0]} fire detections')
-            self.merge_nrt(nrt_new)
+            if os.path.isfile(self.nrt_dataset_path):
+                self.merge_nrt(nrt_new)
+            else:
+                nrt_new.to_parquet(self.nrt_dataset_path)
+                self.log_nrt_end_date(nrt_new)
         else:
             self.logger.warning(f'No new data fetched, nothing to add to the record.')
 
@@ -165,6 +177,6 @@ if __name__ == "__main__":
     env_vars = dotenv_values('.env')
     config = ConfigParser()
     config.read('config.ini')
-    for sensor in ['MODIS', 'VIIRS']:
+    for sensor in ['MODIS', 'VIIRS_NPP', 'VIIRS_NOAA']:
         nrt = FetchNRT(sensor, env_vars['nrt_token'], **config[sensor])
         nrt.fetch()
