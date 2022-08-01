@@ -1,7 +1,27 @@
+"""Geospatial tools"""
+
 import os
 import numpy as np
 import pandas as pd
 
+
+def spatial_subset_dfr(dfr, bbox):
+    """
+    Selects data within spatial bbox. bbox coords must be given as
+    positive values for the Northern hemisphere, and negative for
+    Southern. West and East both positive - Note - the method is
+    naive and will only work for bboxes fully fitting in the Eastern hemisphere!!!
+    Args:
+        dfr - pandas dataframe
+        bbox - (list) [North, West, South, East]
+    Returns:
+        pandas dataframe
+    """
+    dfr = dfr[(dfr['latitude'] < bbox[0]) &
+                            (dfr['latitude'] > bbox[2])]
+    dfr = dfr[(dfr['longitude'] > bbox[1]) &
+                            (dfr['longitude'] < bbox[3])]
+    return dfr
 
 class ModisGrid(object):
     """Class used for calculating position on MODIS

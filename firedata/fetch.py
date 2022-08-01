@@ -1,5 +1,11 @@
 """
 Fetches near-real time active fire data from FIRMS.
+Place your LANCE NRT token as variable (NRT_TOKEN) in
+.env file in project root. The below uses dotenv to read
+the token.
+
+author: tadas.nik@gmail.com
+
 """
 import os
 import logging
@@ -29,7 +35,7 @@ class NRTAuth(AuthBase):
 
 
 class FetchNRT():
-    """Class for fetching active fires nrt data from FIRMS"""
+    """Class for fetching active fires near-real time (nrt) data from FIRMS"""
     def __init__(self, sensor, nrt_token, base_url, nrt_dataset_path, archive_end):
         self.date_now = pd.Timestamp.utcnow()
         self.sensor = sensor
@@ -89,10 +95,12 @@ class FetchNRT():
         return dfr
 
     def log_nrt_end_date(self, dataset):
+        """Logs nrt record end date"""
         self.logger.info('nrt end datetime: ' +
                          dataset.date.max().strftime('%Y-%m-%d %H:%M'))
 
     def prepare_nrt_dataset(self, dataset):
+        """Adds required columns and sets data types of the nrt dataset"""
         # In case dataset doesn't have instrument column:
         dataset['instrument'] = self.sensor
         sensor_str = self.sensor.split('_')[0]
@@ -174,6 +182,8 @@ class FetchNRT():
 
 
 if __name__ == "__main__":
+    # The below is run by a cron job daily. Perhaps better to
+    # move this to a separate script file?
     env_vars = dotenv_values('.env')
     config = ConfigParser()
     config.read('config.ini')

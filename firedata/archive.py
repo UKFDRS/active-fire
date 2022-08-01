@@ -1,3 +1,10 @@
+"""
+Process and prepare archive active fire datasets from FIRMS.
+
+author: tadas.nik@gmail.com
+
+"""
+
 import os
 import glob
 import pandas as pd
@@ -5,12 +12,8 @@ from _utils import VIIRS_dtypes, MCD14DL_dtypes, MCD14DL_nrt_dtypes, FireDate
 
 
 def parse_modis(fname, index_increment, MCD14DL_dtypes):
+    """Read and prepare active fire modis dataset.""" 
     dfr = pd.read_csv(fname, dtype=MCD14DL_dtypes)
-    # Leave the bellow for later stages
-    # drop low confidence detections
-    # dfr = dfr.loc[dfr.confidence >= 30, :].copy()
-    # keeping only "vegetation fires"
-    # dfr = dfr.loc[dfr.type == 0, :].copy()
     dfr = dfr[MCD14DL_dtypes.keys()]
     dfr = dfr.astype(MCD14DL_dtypes)
     dfr['date'] = FireDate.fire_dates(dfr)
@@ -21,24 +24,14 @@ def parse_modis(fname, index_increment, MCD14DL_dtypes):
 
 
 def prepare_viirs_snpp(data_path):
-    """
-    TODO finish
-    """
+    """Read and prepare VIIRS_NPP archive files found in 'data_path'.
+    The datasets must be split per-year"""
     fnames = glob.glob(os.path.join(data_path, 'fire_archive_SV-C2*.csv'))
     for fname in fnames:
         print(fname)
         dfr = pd.read_csv(fname, dtype=VIIRS_dtypes)
         dfr = dfr.astype(VIIRS_dtypes)
         dfr['date'] = FireDate.fire_dates(dfr)
-        # drop low confidence detections
-        # dfr = dfr.loc[dfr.confidence != 'l', :].copy()
-        # keeping only "vegetation fires"
-        # dfr = dfr.loc[dfr.type == 0, :].copy()
-        # set daynight values to strings as in the Modis product
-        # dfr.loc[dfr.daynight == 1, 'daynight'] = 'D'
-        # dfr.loc[dfr.daynight == 0, 'daynight'] = 'N'
-        # dfr.set_index('date', drop=True, inplace=True)
-        # dfr.sort_index(inplace=True)
         year = dfr.date[0].year
         dfr.to_parquet(os.path.join(data_path,
             f'fire_archive_SV-C2_{year}.parquet'))
@@ -46,10 +39,9 @@ def prepare_viirs_snpp(data_path):
 
 
 def prepare_modis_archive_all_years():
-    """
-    Pre-processing of MODIS archive active fire dataset.
-    Reads yearly csv files and writes parquet.
-    """
+    """ Pre-processing of MODIS archive active fire dataset.
+    Reads yearly csv files and writes parquet. TODO change 
+    process per file rather than per year."""
     index_increment = 0
     years = range(2002, 2022, 1)
     for year in years:
@@ -63,6 +55,8 @@ def prepare_modis_archive_all_years():
 
 
 def prepare_modis_nrt(nrt_fname, last_archive_fname, MCD14DL_nrt_dtypes):
+    """Format the modis nrt dataset. TODO should not be used.
+    Import from fetch.py instead."""
     nrt = pd.read_csv(nrt_fname, dtype=MCD14DL_nrt_dtypes)
     nrt = nrt[MCD14DL_nrt_dtypes.keys()]
     nrt = nrt.astype(MCD14DL_nrt_dtypes)
@@ -71,22 +65,12 @@ def prepare_modis_nrt(nrt_fname, last_archive_fname, MCD14DL_nrt_dtypes):
     nrt = nrt.sort_values(by='date').reset_index(drop=True)
     index_increment = pd.read_parquet(last_archive_fname).index.stop
     nrt.index = nrt.index + index_increment
-    # TODO defer the bellow to later stages?
     nrt.to_parquet('data/nrt_complete.parquet')
 
-""" 
-data_path = 'data/VIIRS'
-fnames = glob.glob(os.path.join(data_path, 'fire_archive_SV-C2*.csv'))
-for fname in fnames:
-    print(fname)
-    dfr = pd.read_csv(fname, dtype=VIIRS_dtypes)
-    dfr = dfr.astype(VIIRS_dtypes)
-"""
-prepare_viirs_snpp('data/VIIRS')
-
+if __name__ == "__main__":
 # prepare_modis_archive_all_years()
 # TODO run the bellow setting dtypes when reading csv
 # nrt_fname = '/home/tadas/activefire/firedata/data/fire_nrt_M-C61_238232.csv'
 # last_archive_fname = '/home/tadas/activefire/firedata/data/modis_archive_2021.parquet'
 # prepare_modis_nrt(nrt_fname, last_archive_fname, MCD14DL_nrt_dtypes)
-# dfr = pd.read_parquet('data/modis_archive_2002.parquet')
+# prepare_viirs_snpp('data/VIIRS')
