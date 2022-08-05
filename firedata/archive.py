@@ -8,7 +8,7 @@ author: tadas.nik@gmail.com
 import os
 import glob
 import pandas as pd
-from _utils import VIIRS_dtypes, MCD14DL_dtypes, MCD14DL_nrt_dtypes, FireDate
+from _utils import dataset_dtypes, FireDate
 
 
 def parse_modis(fname, index_increment, MCD14DL_dtypes):
@@ -22,6 +22,20 @@ def parse_modis(fname, index_increment, MCD14DL_dtypes):
     dfr.index = dfr.index + index_increment
     return dfr
 
+def prepare_viirs_noaa(data_path, cur_year):
+    """
+    TODO finish
+    """
+    fnames = glob.glob(os.path.join(data_path, 'fire_nrt_J1V*.csv'))
+    dfrs = []
+    for fname in fnames:
+        dfr = pd.read_csv(fname, dtype=dataset_dtypes['VIIRS_NOAA_nrt_dtypes'])
+        dfr = dfr.astype(dataset_dtypes['VIIRS_NOAA_nrt_dtypes'])
+        dfr['date'] = FireDate.fire_dates(dfr)
+        year = dfr.date[0].year
+        dfr.to_parquet(os.path.join(data_path,
+            f'fire_archive_nrt-{year}.parquet'))
+
 
 def prepare_viirs_snpp(data_path):
     """Read and prepare VIIRS_NPP archive files found in 'data_path'.
@@ -29,25 +43,22 @@ def prepare_viirs_snpp(data_path):
     fnames = glob.glob(os.path.join(data_path, 'fire_archive_SV-C2*.csv'))
     for fname in fnames:
         print(fname)
-        dfr = pd.read_csv(fname, dtype=VIIRS_dtypes)
-        dfr = dfr.astype(VIIRS_dtypes)
+        dfr = pd.read_csv(fname, dtype=dataset_dtypes['VIIRS_dtypes'])
+        dfr = dfr.astype(dataset_dtypes['VIIRS_dtypes'])
         dfr['date'] = FireDate.fire_dates(dfr)
         year = dfr.date[0].year
         dfr.to_parquet(os.path.join(data_path,
             f'fire_archive_SV-C2_{year}.parquet'))
-
-
 
 def prepare_modis_archive_all_years():
     """ Pre-processing of MODIS archive active fire dataset.
     Reads yearly csv files and writes parquet. TODO change 
     process per file rather than per year."""
     index_increment = 0
-    years = range(2002, 2022, 1)
     for year in years:
         fname = f'data/fire_archive_M6_{year}.csv'
         print(fname, year)
-        dfr = parse_modis(fname, index_increment, MCD14DL_dtypes)
+        dfr = parse_modis(fname, index_increment, dataset_dtypes['MODIS_dtypes'])
         index_increment = dfr.index.stop
         print(index_increment, dfr.index)
         dfr.to_parquet(os.path.join('data',
@@ -69,6 +80,10 @@ def prepare_modis_nrt(nrt_fname, last_archive_fname, MCD14DL_nrt_dtypes):
 
 if __name__ == "__main__":
 # prepare_modis_archive_all_years()
+# prepare_viirs_snpp('data/VIIRS_NPP')
+# prepare_viirs_noaa('data/VIIRS_NOAA', 2022)
+
+# prepare_modis_archive_all_years([2021])
 # TODO run the bellow setting dtypes when reading csv
 # nrt_fname = '/home/tadas/activefire/firedata/data/fire_nrt_M-C61_238232.csv'
 # last_archive_fname = '/home/tadas/activefire/firedata/data/modis_archive_2021.parquet'

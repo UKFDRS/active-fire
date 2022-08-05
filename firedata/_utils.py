@@ -68,6 +68,24 @@ dataset_dtypes = {
         'daynight': object,
         },
 
+    'VIIRS_NOAA_nrt_dtypes' : {
+        'latitude': 'float32',
+        'longitude': 'float32',
+        'brightness': 'float32',
+        'acq_date': object,
+        'acq_time': object,
+        'scan': 'float32',
+        'track': 'float32',
+        'satellite': object,
+        'instrument': object,
+        'confidence': object,
+        'version': object,
+        'bright_t31': 'float32',
+        'frp': 'float32',
+        'daynight': object,
+        },
+
+
     'VIIRS_nrt_dtypes' : {
         'latitude': 'float32',
         'longitude': 'float32',

@@ -38,8 +38,6 @@ class ModisGrid(object):
         self.w_size = 463.31271653
         # the radius of the idealized sphere representing the Earth
         self.earth_r = 6371007.181
-        # DBSCAN eps in radians = 650 meters / earth radius
-        self.eps = 750 / self.earth_r
         self.base_date = pd.Timestamp('2002-01-01')
 
     def days_since_base_date(self, dfr, dates):
