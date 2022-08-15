@@ -187,6 +187,8 @@ if __name__ == "__main__":
     env_vars = dotenv_values('.env')
     config = ConfigParser()
     config.read('config.ini')
-    for sensor in ['MODIS', 'VIIRS_NPP', 'VIIRS_NOAA']:
+    # Suomi NPP is out of action...
+    # for sensor in ['MODIS', 'VIIRS_NPP', 'VIIRS_NOAA']:
+    for sensor in ['MODIS', 'VIIRS_NOAA']:
         nrt = FetchNRT(sensor, env_vars['nrt_token'], **config[sensor])
         nrt.fetch()
