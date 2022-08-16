@@ -36,12 +36,13 @@ class NRTAuth(AuthBase):
 
 class FetchNRT():
     """Class for fetching active fires near-real time (nrt) data from FIRMS"""
-    def __init__(self, sensor, nrt_token, base_url, nrt_dataset_path, archive_end):
+    def __init__(self, sensor, nrt_token, data_path,
+                 base_url, nrt_dataset, archive_end):
         self.date_now = pd.Timestamp.utcnow()
         self.sensor = sensor
         self.auth = NRTAuth(nrt_token)
         self.base_url = base_url
-        self.nrt_dataset_path = nrt_dataset_path
+        self.nrt_dataset_path = os.path.join(data_path, nrt_dataset)
         self.archive_end = archive_end
         self.logger = self.setup_logger()
 
@@ -190,5 +191,7 @@ if __name__ == "__main__":
     # Suomi NPP is out of action...
     # for sensor in ['MODIS', 'VIIRS_NPP', 'VIIRS_NOAA']:
     for sensor in ['MODIS', 'VIIRS_NOAA']:
-        nrt = FetchNRT(sensor, env_vars['nrt_token'], **config[sensor])
+        nrt = FetchNRT(sensor, env_vars['nrt_token'], 
+                       config['OS']['data_path'], **config[sensor])
         nrt.fetch()
+
