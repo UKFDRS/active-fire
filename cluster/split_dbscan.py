@@ -37,14 +37,12 @@ class SplitDBSCAN(DBSCAN):
         # chunk_edge represents max value in chunk along the 
         # split_dimension
         chunk_edge = X[:, self.split_dim].max()
-
         # whithin reach is a mask of samples which are within edge_eps
         # distance from the chunk edge
         within_reach = X[:, self.split_dim] >= (chunk_edge - self.edge_eps)
-
         # unique labels of all within reach samples
-        active_labels = np.unique(self.labels_[within_reach])
-
+        print(within_reach.shape, self.labels_.shape)
+        active_labels = np.unique(self.labels_[within_reach.squeeze(axis=1)])
         # mask indicating all within reach self.labels_
         active_mask = np.isin(self.labels_, active_labels)
         return active_mask

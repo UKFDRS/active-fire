@@ -101,7 +101,28 @@ dataset_dtypes = {
         'bright_ti5': 'float32',
         'frp': 'float32',
         'daynight': object,
+        }
+    }
+
+sql_datatypes = {
+    'SQL_rename': {
+        'GEOUNIT': 'admin',
         },
+    'SQL_detections_dtypes': {
+        'latitude': 'float32',
+        'longitude': 'float32',
+        'frp': 'float32',
+        'daynight': 'int',
+        'type': 'int',
+        'date': 'int',
+        'lc': 'int',
+        'admin': object,
+        'event': 'int',
+        },
+    'SQL_events_dtypes': {
+        'event': 'int',
+        'active': 'int'
+        }
     }
 
 def spatial_subset_dfr(dfr, bbox):
@@ -125,23 +146,21 @@ def spatial_subset_dfr(dfr, bbox):
 class ModisGrid(object):
     """Class used for calculating position on MODIS
     sinusoidal grid..."""
+    # height and width of MODIS tile in the projection plane (m)
+    tile_size = 1111950
+    # the western limit ot the projection plane (m)
+    x_min = -20015109
+    # the northern limit ot the projection plane (m)
+    y_max = 10007555
+    # the actual size of a "500-m" MODIS sinusoidal grid cell
+    w_size = 463.31271653
+    # the radius of the idealized sphere representing the Earth
+    earth_r = 6371007.181
+    # DBSCAN eps in radians = 650 meters / earth radius
+    eps = 750 / earth_r
 
-    def __init__(self):
-        # height and width of MODIS tile in the projection plane (m)
-        self.tile_size = 1111950
-        # the western limit ot the projection plane (m)
-        self.x_min = -20015109
-        # the northern limit ot the projection plane (m)
-        self.y_max = 10007555
-        # the actual size of a "500-m" MODIS sinusoidal grid cell
-        self.w_size = 463.31271653
-        # the radius of the idealized sphere representing the Earth
-        self.earth_r = 6371007.181
-        # DBSCAN eps in radians = 650 meters / earth radius
-        self.eps = 750 / self.earth_r
-        self.basedate = pd.Timestamp('2002-01-01')
-
-    def modis_sinusoidal_grid_index(self, longitudes, latitudes):
+    @classmethod
+    def modis_sinusoidal_grid_index(cls, longitudes, latitudes):
         """
         Calculates the position of the points given in longitude latitude
         columns on the global MODIS 500 metre resolution sinusoidal grid.
@@ -162,16 +181,16 @@ class ModisGrid(object):
         """
         lon_rad = np.deg2rad(longitudes)
         lat_rad = np.deg2rad(latitudes)
-        x = self.earth_r * lon_rad * np.cos(lat_rad)
-        y = self.earth_r * lat_rad
-        tile_h = (np.floor((x - self.x_min) /
-                  self.tile_size)).astype(int)
-        tile_v = (np.floor((self.y_max - y) /
-                  self.tile_size)).astype(int)
-        i_top = (self.y_max - y) % self.tile_size
-        j_top = (x - self.x_min) % self.tile_size
-        indy = (np.floor((i_top / self.w_size) - 0.5)).astype(int)
-        indx = (np.floor((j_top / self.w_size) - 0.5)).astype(int)
+        x = cls.earth_r * lon_rad * np.cos(lat_rad)
+        y = cls.earth_r * lat_rad
+        tile_h = (np.floor((x - cls.x_min) /
+                  cls.tile_size)).astype(int)
+        tile_v = (np.floor((cls.y_max - y) /
+                  cls.tile_size)).astype(int)
+        i_top = (cls.y_max - y) % cls.tile_size
+        j_top = (x - cls.x_min) % cls.tile_size
+        indy = (np.floor((i_top / cls.w_size) - 0.5)).astype(int)
+        indx = (np.floor((j_top / cls.w_size) - 0.5)).astype(int)
         index_x = indx + (tile_h * 2400)
         index_y = indy + (tile_v * 2400)
         return index_x, index_y
@@ -179,27 +198,43 @@ class ModisGrid(object):
 class FireDate(object):
     """Class for datetime conversions
     """
-
-    def __init__(self, base_date='2002-01-01'):
-        self.base_date = pd.Timestamp(base_date, tz='utc')
+    base_date = pd.Timestamp('1970-01-01', tz='utc')
 
     @classmethod
-    def fire_dates(self, dfr):
+    def fire_dates(cls, dfr):
+        """Converts FIRMS active fire date and time stored
+        as strings in 'acq_date' and 'acq_time' columns to
+        datetimes.
+        Args:
+            dfr: pandas dataframe with 'acq_date' and 'acq_time' columns
+        Returns:
+            dates: pandas Series with datetimes.
+        """
         dates = pd.to_datetime(
             dfr['acq_date'] + ' ' +
             dfr.loc[:, 'acq_time'].astype(str).str.zfill(4), utc=True
             )
         return dates
 
-    def days_since(self, dates):
+    @classmethod
+    def days_since(cls, dates):
         """Calculates days from base_date
-
         Args:
             dates (array like): pandas timedelta objects with dates
-
         Returns:
             day_since : (array): with total days from 
             self.base_date to the date of fire detection.
         """
-        day_since = (dates - self.base_date).dt.days
+        day_since = (dates - cls.base_date).dt.days
         return day_since
+    
+    @classmethod
+    def unix_time(cls, datetimes):
+        """pandas datetime to unix time conversion
+        Args:
+            datetimes: pandas Series with datetimes.
+        Returns:
+            unix time
+        """
+        return (datetimes - cls.base_date).dt.total_seconds().astype(int)
+        
