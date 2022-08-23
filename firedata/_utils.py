@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-
+from pathlib import Path
 
 select_columns = {
     'latitude': 'float32',
@@ -109,6 +109,7 @@ sql_datatypes = {
         'GEOUNIT': 'admin',
         },
     'SQL_detections_dtypes': {
+        'id': 'int',
         'latitude': 'float32',
         'longitude': 'float32',
         'frp': 'float32',
@@ -121,9 +122,16 @@ sql_datatypes = {
         },
     'SQL_events_dtypes': {
         'event': 'int',
-        'active': 'int'
+        'active': 'int',
+        'size': 'int',
+        'latitude': 'float32',
+        'longitude': 'float32',
+        'duration': 'float32'
         }
     }
+
+def get_project_root() -> Path:
+    return Path(__file__).parent.parent
 
 def spatial_subset_dfr(dfr, bbox):
     """
