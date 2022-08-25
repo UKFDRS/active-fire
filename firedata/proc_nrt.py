@@ -86,5 +86,4 @@ if __name__ == "__main__":
     # for sensor in ['MODIS', 'VIIRS_NPP', 'VIIRS_NOAA']:
     for sensor in ['MODIS', 'VIIRS_NOAA']:
         nrt = FetchNRT(sensor, nrt_token, base_url)
-        nrt.fetch()
-
+        # nrt.fetch()

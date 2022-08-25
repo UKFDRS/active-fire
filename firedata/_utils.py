@@ -168,24 +168,22 @@ class ModisGrid(object):
     eps = 750 / earth_r
 
     @classmethod
-    def modis_sinusoidal_grid_index(cls, longitudes, latitudes):
+    def modis_sinusoidal_coords(cls, longitudes, latitudes):
         """
         Calculates the position of the points given in longitude latitude
-        columns on the global MODIS 500 metre resolution sinusoidal grid.
+        columns on the MODIS 500 metre resolution sinusoidal grid.
         Follows formalism given in the MCD64A1 product ATBD document (Giglio
-        et al., 2016). Global grid indices are obtained by conversion from
-        MODIS sinusoidal grid tile and within-tile row/column index to global
-        index on the entire grid row/column.
+        et al., 2016). 
         Parameters
         ----------
         longitudes : (array) with longitudes.
         latitudes : (array) with latitudes.
         Returns
         -------
-        index_x : Array with pixel positions on global MODIS grid
-            along x axis.
-        index_y : Array with pixel positions on global MODIS grid
-            along y axis.
+        tile_h : Array with MODIS 10 degree tile horizontal index.
+        tile_v : Array with MODIS 10 degree tile vertical index.
+        indx : Array with within-tile pixel positions along x axis.
+        indy : Array with within-tile pixel positions along y axis.
         """
         lon_rad = np.deg2rad(longitudes)
         lat_rad = np.deg2rad(latitudes)
@@ -199,6 +197,27 @@ class ModisGrid(object):
         j_top = (x - cls.x_min) % cls.tile_size
         indy = (np.floor((i_top / cls.w_size) - 0.5)).astype(int)
         indx = (np.floor((j_top / cls.w_size) - 0.5)).astype(int)
+        return tile_h, tile_v, indx, indy
+
+
+    @classmethod
+    def modis_sinusoidal_grid_index(cls, longitudes, latitudes):
+        """
+        Global grid indices are obtained by conversion from
+        MODIS sinusoidal grid tile and within-tile row/column index to global
+        index on the entire grid row/column.
+        Parameters
+        ----------
+        longitudes : (array) with longitudes.
+        latitudes : (array) with latitudes.
+        Returns
+        -------
+        index_x : Array with pixel positions on global MODIS grid
+            along x axis.
+        index_y : Array with pixel positions on global MODIS grid
+            along y axis.
+        """
+        tile_h, tile_v, indx, indy = cls.modis_sinusoidal_coords(longitudes, latitudes)
         index_x = indx + (tile_h * 2400)
         index_y = indy + (tile_v * 2400)
         return index_x, index_y

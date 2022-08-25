@@ -1,14 +1,14 @@
 import os
 import sqlite3
 from sqlite3 import Error
-from configparser import ConfigParser
 from firedata._utils import FireDate, sql_datatypes
 from configuration import Config
 
 class DataBase(object):
     def __init__(self, name):
         self.name = name
-        self.__db_file = os.path.join(Config.data_path, name + '.db')
+        data_path = Config.config().get(section='OS', option='data_path')
+        self.__db_file = os.path.join(data_path, name + '.db')
 
     def create_connection(self):
         """ create a database connection to the SQLite database
@@ -69,6 +69,24 @@ class DataBase(object):
 if __name__ == '__main__':
     name = 'test'
     db = DataBase(name)
+
+    detections_table_global = """CREATE TABLE IF NOT EXISTS detections (
+                                    id        integer PRIMARY KEY,
+                                    latitude  real    NOT NULL,
+                                    longitude real    NOT NULL,
+                                    frp       real    NOT NULL,
+                                    daynight  integer NOT NULL,
+                                    type      integer NOT NULL,
+                                    date      integer NOT NULL,
+                                    lc        integer NOT NULL,
+                                    admin_lc  integer,
+                                    admin     text    NOT NULL,
+                                    cont      text    NOT NULL,
+                                    event     integer NOT NULL,
+                                    FOREIGN KEY (event) REFERENCES events (event_id)
+                                    unique (latitude, longitude, date)
+                                    ); """
+
 
     sql_create_detections_table = """ CREATE TABLE IF NOT EXISTS detections (
                                         id        integer PRIMARY KEY,
