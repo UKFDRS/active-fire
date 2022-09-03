@@ -190,7 +190,7 @@ if __name__ == "__main__":
     config.read('config.ini')
     # Suomi NPP is out of action...
     # for sensor in ['MODIS', 'VIIRS_NPP', 'VIIRS_NOAA']:
-    for sensor in ['MODIS', 'VIIRS_NOAA']:
+    for sensor in ['MODIS', 'VIIRS_NPP', 'VIIRS_NOAA']:
         nrt = FetchNRT(sensor, env_vars['nrt_token'], 
                        config['OS']['data_path'], **config[sensor])
         nrt.fetch()
