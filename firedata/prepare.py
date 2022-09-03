@@ -1,6 +1,10 @@
+import os
+import glob
+import numpy as np
 import pandas as pd
+from pyhdf import SD
 from configuration import Config
-from _utils import dataset_dtypes, ModisGrid, FireDate
+from firedata._utils import dataset_dtypes, ModisGrid, FireDate
 
 def add_country(dfr):
     """
@@ -165,33 +169,36 @@ def read_hdf4(dataset_path, dataset=None):
 
 
 class PrepData(object):
+    config = Config.config()
+    data_path = config['OS']['data_path']
+    lulc_path = config['OS']['lulc_data_path']
+
     def __init__(self, sensor):
-        data_path = Config.config['OS']['data_path']
-        self.nrt_dataset = Config.config[sensor]['nrt_dataset']
-        self.base_url = Config.config[sensor]['base_url']
-        self.archive_end = Config.config[sensor]['archive_end']
-        self.nrt_dataset_path = os.path.join(data_path, nrt_dataset)
         self.date_now = pd.Timestamp.utcnow()
 
-    def frp_lulc(self, dfr):
-        dfr[['tile_h', 'tile_v', 'indx', 'indy']] = ModisGrid.modis_sinusoidal_coords(dfr)
+    def frp_lulc(self, dfr, year):
+        tile_h, tile_v, indx, indy = ModisGrid.modis_sinusoidal_coords(dfr.longitude, dfr.latitude)
+        dfr['tile_h'] = tile_h
+        dfr['tile_v'] = tile_v
+        dfr['indx'] = indx
+        dfr['indy'] = indy
         grouped = dfr.groupby(['tile_h', 'tile_v'])
         dfrs = []
         for name, gr in grouped:
             tile_h = name[0]
             tile_v = name[1]
-            landfnstr = os.path.join(land_data_path,
+            landfnstr = os.path.join(self.lulc_path,
                 'MCD12Q1.A{0}001.h{1:02}v{2:02}*'.format(year, tile_h, tile_v))
             try:
                 lulc_fname = glob.glob(landfnstr)[0]
             except IndexError:
                 print('tile not found: ', landfnstr)
-                landfnstr = os.path.join(land_data_path,
+                landfnstr = os.path.join(self.lulc_path,
                     'MCD12Q1.A{0}001.h{1:02}v{2:02}*'.format(year - 1, tile_h, tile_v))
                 print('using: ', landfnstr)
                 lulc_fname = glob.glob(landfnstr)[0]
-            dslc = self.read_hdf4(lulc_fname)
-            dfr['lc1'] = dslc.select('LC_Type1').get()[gr['indy'], gr['indx']]
+            dslc = read_hdf4(lulc_fname)
+            dfr['lc'] = dslc.select('LC_Type1').get()[gr['indy'], gr['indx']]
             dfrs.append(dfr)
         dfr = pd.concat(dfrs)
         return dfr
@@ -242,4 +249,7 @@ class PrepData(object):
         nrt_selected.to_parquet(self.nrt_dataset_path)
 
 if __name__ == "__main__":
-    pass
+    pr = PrepData('VIIRS_NPP')
+    dpath = os.path.join(pr.data_path, 'VIIRS_NPP/fire_archive_SV-C2_2012.parquet')
+    dfr = pd.read_parquet(dpath)
+    dfr = pr.frp_lulc(dfr, 2012)

@@ -44,6 +44,12 @@ class DataBase(object):
             value = cur.fetchone()[0]
             return value
 
+    def insert_records(self, sql_string, records):
+        with self.create_connection() as conn:
+            cur = conn.cursor()
+            cur.executemany(sql_string, records)
+            conn.commit()
+
     def insert_detections(self, fires_records):
         """Insert fire detections into the database"""
         columns = sql_datatypes['SQL_detections_dtypes'].keys()
