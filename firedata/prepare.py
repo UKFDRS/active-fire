@@ -4,30 +4,75 @@ import numpy as np
 import pandas as pd
 from pyhdf import SD
 from configuration import Config
-from firedata._utils import dataset_dtypes, ModisGrid, FireDate
+from firedata._utils import dataset_dtypes, sql_datatypes, ModisGrid, FireDate
 
-def add_country(dfr):
+def clean_viirs(dfr):
     """
-    Supplementary country information added to the dataset
+    Drop fire events which are primarily stationary detections,
+    water ant urban
     """
-    dfr[['lon', 'lat']].to_csv('input.csv', sep = ' ', index = False, header = False)
-    os.system(r'gdallocationinfo -valonly -wgs84 "%s" <%s >%s' % ('data/gpw_v4_national_identifier_grid_rev11_30_sec.tif',
-                                                                      'input.csv','output.csv'))
-    dfr['cn'] = np.loadtxt('output.csv')
-    dfr = dfr.fillna(-999)
-    dfr['cn'] = dfr['cn'].astype(int)
+    lc_count = dfr.groupby(['event'])['lc'].value_counts().unstack(fill_value=0)
+    # drop detections which are classed as static
+    print(dfr.shape)
+    dfr = dfr[dfr.type != 2]
+    print(dfr.shape)
+    # drop urban events (> 50% urban detections)
+    urban_rat = (lc_count[20] + lc_count[21]) / (lc_count.sum(axis=1))
+    try:
+        dfr = dfr.drop('urban_ratio', axis=1)
+    except:
+        pass
+    urban_rat = urban_rat.reset_index(name='urban_ratio')
+    dfr = dfr.merge(urban_rat, on='event')
+    dfr = dfr[dfr.urban_ratio < 0.5]
+    print(dfr.shape)
+    # drop water events (> 90% water detections)
+    type_count = dfr.groupby(['event'])['type'].value_counts().unstack(fill_value=0)
+    water_rat = type_count[3] / (lc_count.sum(axis=1))
+    try:
+        dfr = dfr.drop('water_ratio', axis=1)
+    except:
+        pass
+    water_rat = water_rat.reset_index(name='water_ratio')
+    dfr = dfr.merge(water_rat, on='event')
+    dfr = dfr[dfr.water_ratio < 0.9]
+    print(dfr.shape)
+    # Filter out Fife NGL plant area
+    bbox = [56.11, -33.3, 56.08, -3.28]
+    fife = spatial_subset_dfr(dfr, bbox)
+    dfr = dfr[~dfr.isin(fife)].dropna()
+    print(dfr.shape)
     return dfr
 
-def get_continent(dfr):
-    cids = pd.read_parquet('data/countries_continents.parquet')
-    cids = cids.rename({'Value': 'cn', 'Continent_Name': 'Continent'}, axis = 1)
-    cids = cids.loc[(cids.Continent.notna()), :]
-    cidsg = cids.groupby(['cn'])['Continent'].first().reset_index()
-    dfr = pd.merge(dfr, cidsg[['cn', 'Continent']], on = 'cn', how = 'left')
-    dfr.loc[((dfr.cn == 643) & (dfr.lon > 50)), 'Continent'] = 'Asia'
-    dfr.loc[(dfr.cn == 398), 'Continent'] = 'Asia'
-    dfr.loc[dfr.Continent==-999, 'Continent'] = 'None'
+def filter_non_vegetation_events(dfr):
+    """
+    Drop fire events which are primarily non_vegetation detections,
+    (water and urban) and also unclassified
+    """
+    lc_count = dfr.groupby(['event'])['lc'].value_counts().unstack(fill_value=0)
+    # drop detections which are classed as static
+    # drop urban events (> 50% urban detections)
+    if 13 in lc_count:
+        urban_rat = lc_count[13] / (lc_count.sum(axis=1))
+        urban_rat = urban_rat.reset_index(name='urban_ratio')
+        dfr = dfr.merge(urban_rat, on='event')
+        dfr = dfr[dfr.urban_ratio < 0.3]
+        dfr = dfr.drop('urban_ratio', axis=1)
+    # drop water events and unclassified (> 50% water detections)
+    if 0 in lc_count:
+        water_rat = lc_count[0] / (lc_count.sum(axis=1))
+        water_rat = water_rat.reset_index(name='water_ratio')
+        dfr = dfr.merge(water_rat, on='event')
+        dfr = dfr[dfr.water_ratio < 0.5]
+        dfr = dfr.drop('water_ratio', axis=1)
+    if 255 in lc_count:
+        unclass_rat = lc_count[255] / (lc_count.sum(axis=1))
+        water_rat = unclass_rat.reset_index(name='unclass_rat')
+        dfr = dfr.merge(unclass_rat, on='event')
+        dfr = dfr[dfr.unclass_rat < 0.5]
+        dfr = dfr.drop('unclass_ratio', axis=1)
     return dfr
+
 
 def travel_time(dfr):
     """
@@ -40,7 +85,7 @@ def travel_time(dfr):
     travel time to cities to assess inequalities in accessibility in 2015.
     (2018). Nature. doi:10.1038/nature25181.
     """
-    dfr[['lon', 'lat']].to_csv('input.csv', sep = ' ', index = False, header = False)
+    dfr[['longitude', 'latitude']].to_csv('input.csv', sep = ' ', index = False, header = False)
     os.system(r'gdallocationinfo -valonly -wgs84 "%s" <%s >%s' % ('data/2015_accessibility_to_cities_v1.0.tif',
                                                                       'input.csv','output.csv'))
     dfr['time2city'] = np.loadtxt('output.csv')
@@ -56,7 +101,7 @@ def pop_dens(dfr):
         print(year)
         file_year = min(years, key=lambda x:abs(x-year))
         print(file_year)
-        dfr.loc[dfr.year==year, ['lon', 'lat']].to_csv('input.csv', sep = ' ', index = False, header = False)
+        dfr.loc[dfr.year==year, ['longitude', 'latitude']].to_csv('input.csv', sep = ' ', index = False, header = False)
         if file_year == 2000:
             os.system(r'gdallocationinfo -valonly -wgs84 "%s" <%s >%s' % ('data/gpw_v4_population_density_rev11_2000_2pt5_min.tif',
                                                                       'input.csv','output.csv'))
@@ -77,31 +122,25 @@ def pop_dens(dfr):
         dfr.loc[dfr.year==year, 'pop_den'] = np.loadtxt('output.csv')
     return dfr
 
-def per_fire(eps, years, group_col):
-    res = []
-    for year in years:
-        print(year)
-        dfm = pd.read_parquet(f'/mnt/data/area_burned_glob/processing/ba_grouped_{eps}_{year}.parquet')
-        #dfy = fire_size_per_group(dfm, 'group')
-        dfm['day_min'] = dfm.day_since - dfm.unc
-        dfm['day_max'] = dfm.day_since + dfm.unc
-        dfg = dfm.groupby([group_col])
-        lc = group_mode(dfm, [group_col], 'lc1', 'lc')
-        dfg = dfg.agg(size = ('year', 'count'),
-                      year = ('year', 'median'),
-                      day_since = ('day_since', 'median'),
-                      day_min = ('day_min', 'min'),
-                      day_max = ('day_max', 'max'),
-                      x_min = ('x', 'min'),
-                      x_max = ('x', 'max'),
-                      y_min = ('y', 'min'),
-                      y_max = ('y', 'max'),
-                      lon = ('lon', 'median'),
-                      lat = ('lat', 'median')).reset_index()
-        dfg = pd.merge(dfg, lc[[group_col, 'lc1']], on = group_col, how = 'left')
-        res.append(dfg)
-    dfr = pd.concat(res)
-    return dfr
+def group_mode(dfr, group_cols, value_col, count_col):
+    return dfr.groupby(group_cols + [value_col]).size() \
+        .to_frame(count_col).reset_index() \
+        .sort_values(count_col, ascending = False) \
+        .drop_duplicates(subset = group_cols)
+
+def per_fire(dfr):
+    dfg = dfr.groupby('event')
+    lc = group_mode(dfm, ['event'], 'lc', 'lc')
+    cn = group_mode(dfr, ['event'], 'admin', 'admin')
+    dfg = dfg.agg(size = ('type', 'count'),
+                  start_date = ('date', 'min'),
+                  last_date = ('date', 'max'),
+                  active = ('active', 'first'),
+                  longitude = ('longitude', 'median'),
+                  latitude = ('latitude', 'median')).reset_index()
+    dfg = pd.merge(dfg, lc[['event', 'lc']], on = group_col, how = 'left')
+    dfg = pd.merge(dfg, cn[['event', 'admin']], on = group_col, how = 'left')
+    return dfg
 
 def clean_nrt(dfr):
     """
@@ -167,41 +206,128 @@ def read_hdf4(dataset_path, dataset=None):
         print('Could not read dataset {0}'.format(file_name))
         raise
 
-
 class PrepData(object):
     config = Config.config()
     data_path = config['OS']['data_path']
     lulc_path = config['OS']['lulc_data_path']
+    admin_path = config['OS']['admin_data_path']
 
     def __init__(self, sensor):
         self.date_now = pd.Timestamp.utcnow()
 
-    def frp_lulc(self, dfr, year):
-        tile_h, tile_v, indx, indy = ModisGrid.modis_sinusoidal_coords(dfr.longitude, dfr.latitude)
-        dfr['tile_h'] = tile_h
-        dfr['tile_v'] = tile_v
-        dfr['indx'] = indx
-        dfr['indy'] = indy
+    def prepare_dataset(self, dataset):
+        """Selects needed columns from fire detections dataset,
+        and adds missing ones. Works both with archive and nrt
+        datasets"""
+        sql_columns = sql_datatypes['SQL_detections_dtypes'].keys()
+        sql_event_columns = sql_datatypes['SQL_events_dtypes'].keys()
+        # If no date column add one
+        if 'date' not in dataset:
+            dataset['date'] = FireDate.fire_dates(dataset)
+        # If no type column assume nrt dataset
+        if 'type' not in dataset:
+            dataset['type'] = 4
+        # Add country code
+        dataset['admin'] = self.country_code(dataset)
+        # Add land cover
+        dataset = self.modis_lulc(dataset)
+        # remap daynight to integer
+        daynight_map = {'D': 1, 'N': 0}
+        dataset['daynight'] = dataset['daynight'].map(daynight_map)
+        # datetime to unix time
+        dataset['date'] = FireDate.unix_time(dataset['date'])
+        dataset = dataset.sort_values(by='date').reset_index(drop=True)
+        # filter
+        dataset = filter_non_vegetation_events(dataset)
+        # aggregate per fire
+        per_fire = self.per_fire(dataset)
+        print(per_fire.columns)
+        dataset = dataset.loc[:, dataset.columns.isin(sql_columns)]
+        per_fire = per_fire.loc[:, per_fire.columns.isin(sql_event_columns)]
+        print(per_fire.columns)
+        return dataset, per_fire
+
+    def modis_lulc(self, dataset):
+        """Add land cover from MODIS MCD12Q1 product""" 
+        tile_h, tile_v, indx, indy = ModisGrid.modis_sinusoidal_coords(dataset.longitude,
+                dataset.latitude)
+        # Create a dataframe with grid indices
+        dfr = pd.DataFrame({'tile_h': tile_h,
+                            'tile_v': tile_v,
+                            'indx': indx,
+                            'indy': indy})
+        dfr.index = dataset.index
         grouped = dfr.groupby(['tile_h', 'tile_v'])
         dfrs = []
+        lulc_year = self.modis_lulc_year(dataset)
         for name, gr in grouped:
             tile_h = name[0]
             tile_v = name[1]
-            landfnstr = os.path.join(self.lulc_path,
-                'MCD12Q1.A{0}001.h{1:02}v{2:02}*'.format(year, tile_h, tile_v))
+            lulc_fname = os.path.join(self.lulc_path,
+                f'MCD12Q1.A{lulc_year}001.h{tile_h:02}v{tile_v:02}*')
             try:
-                lulc_fname = glob.glob(landfnstr)[0]
+                lulc_fname = glob.glob(lulc_fname)[0]
+                dslc = read_hdf4(lulc_fname)
+                gr['lc'] = dslc.select('LC_Type1').get()[gr['indy'], gr['indx']]
             except IndexError:
-                print('tile not found: ', landfnstr)
-                landfnstr = os.path.join(self.lulc_path,
-                    'MCD12Q1.A{0}001.h{1:02}v{2:02}*'.format(year - 1, tile_h, tile_v))
-                print('using: ', landfnstr)
-                lulc_fname = glob.glob(landfnstr)[0]
-            dslc = read_hdf4(lulc_fname)
-            dfr['lc'] = dslc.select('LC_Type1').get()[gr['indy'], gr['indx']]
-            dfrs.append(dfr)
+                print('tile not found: ', lulc_fname)
+                gr['lc'] = 0
+            gr = gr.drop(['tile_h', 'tile_v', 'indx', 'indy'], axis=1)
+            dfrs.append(gr)
         dfr = pd.concat(dfrs)
+        dataset = dataset.join(dfr['lc'])
+        return dataset
+
+    def modis_lulc_year(self, dataset):
+        """Returns the closest year in available MCD12Q1 product to
+        mode year of the fire detections dataset"""
+        file_names = glob.glob(os.path.join(self.lulc_path, '*.hdf'))
+        years = [int(x.split('.A')[1][:4]) for x in file_names]
+        years_unique = np.unique(years)
+        dataset_year = dataset['date'].dt.year.value_counts().index[0]
+        lulc_year = years_unique[np.argmin((years_unique - dataset_year))]
+        return lulc_year
+
+
+    def country_code(self, dfr):
+        """
+        Supplementary country information added to the dataset
+        """
+        admin_file_path = os.path.join(self.admin_path,
+                'gpw_v4_national_identifier_grid_rev11_30_sec.tif')
+        dfr[['longitude', 'latitude']].to_csv('input.csv', sep = ' ', index = False, header = False)
+        os.system(r'gdallocationinfo -valonly -wgs84 "%s" <%s >%s' % (admin_file_path,
+                                                                          'input.csv','output.csv'))
+        admin = np.loadtxt('output.csv')
+        return admin.astype(int)
+
+    def get_continent(self, dfr):
+        continents_path = os.path.join(self.admin_path,
+            'countries_continents.parquet')
+        cids = pd.read_parquet(continents_path)
+        cids = cids.rename({'Value': 'admin', 'Continent_Name': 'continent'}, axis = 1)
+        cids = cids.loc[(cids.continent.notna()), :]
+        cidsg = cids.groupby(['admin'])['continent'].first().reset_index()
+        dfr = pd.merge(dfr, cidsg[['admin', 'continent']], on = 'admin', how = 'left')
+        dfr.loc[((dfr.admin == 643) & (dfr.longitude > 50)), 'continent'] = 'Asia'
+        dfr.loc[(dfr.admin == 398), 'continent'] = 'Asia'
+        dfr.loc[dfr.continent==-999, 'continent'] = 'None'
         return dfr
+
+    def per_fire(self, dfr):
+        dfg = dfr.groupby('event')
+        lc = group_mode(dfr, ['event'], 'lc', 'glc')
+        cn = group_mode(dfr, ['event'], 'admin', 'gadmin')
+        dfg = dfg.agg(size = ('type', 'count'),
+                      start_date = ('date', 'min'),
+                      last_date = ('date', 'max'),
+                      active = ('active', 'first'),
+                      longitude = ('longitude', 'median'),
+                      latitude = ('latitude', 'median')).reset_index()
+        dfg = pd.merge(dfg, lc[['event', 'lc']], on = 'event', how = 'left')
+        dfg = pd.merge(dfg, cn[['event', 'admin']], on = 'event', how = 'left')
+        dfg = self.get_continent(dfg)
+        return dfg
 
     def prepare_nrt_dataset(self, dataset):
         """Adds required columns and sets data types of the nrt dataset"""
@@ -247,9 +373,10 @@ class PrepData(object):
         archive_end_dt = pd.Timestamp(self.archive_end)
         nrt_selected = nrt[nrt.date.values > archive_end_dt]
         nrt_selected.to_parquet(self.nrt_dataset_path)
-
 if __name__ == "__main__":
     pr = PrepData('VIIRS_NPP')
     dpath = os.path.join(pr.data_path, 'VIIRS_NPP/fire_archive_SV-C2_2012.parquet')
     dfr = pd.read_parquet(dpath)
-    dfr = pr.frp_lulc(dfr, 2012)
+    print('fin reading')
+    dfr = pr.prepare_dataset(dfr)
+    dfg = per_fire(dfr)

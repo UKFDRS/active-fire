@@ -103,17 +103,24 @@ if __name__ == '__main__':
                                         type      integer NOT NULL,
                                         date      integer NOT NULL,
                                         lc        integer NOT NULL,
-                                        admin     text    NOT NULL,
+                                        admin     integer NOT NULL,
                                         event     integer NOT NULL,
-                                        FOREIGN KEY (event) REFERENCES events (event_id)
+                                        active    integer NOT NULL,
+                                        FOREIGN KEY (event) REFERENCES events (event)
                                         unique (latitude, longitude, date)
                                         ); """
 
     sql_create_events_table = """ CREATE TABLE IF NOT EXISTS events (
-                                        event_id  integer PRIMARY KEY,
-                                        active    integer NOT NULL
+                                        event      integer PRIMARY KEY,
+                                        active     integer NOT NULL,
+                                        size       integer NOT NULL,
+                                        start_date integer NOT NULL,
+                                        last_date  integer NOT NULL,
+                                        duration   integer NOT NULL,
+                                        latitude   real NOT NULL,
+                                        longitude  real NOT NULL,
+                                        continent  text NOT NULL,
                                         );"""
-    
     #db.spin_up_fire_database([sql_create_detections_table, sql_create_events_table])
     # db.create_table(sql_create_detections_table)
     #wdb.create_table(sql_create_events_table)
