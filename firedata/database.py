@@ -50,6 +50,17 @@ class DataBase(object):
             cur.executemany(sql_string, records)
             conn.commit()
 
+    def insert_events(self, fires_records):
+        """Insert fire events into the database"""
+        columns = sql_datatypes['SQL_events_dtypes'].keys()
+        qmks = ', '.join(['?'] * len(columns))
+        sql = f"""INSERT INTO events VALUES ({qmks})""" 
+        with self.create_connection() as conn:
+            cur = conn.cursor()
+            cur.executemany(sql, fires_records)
+            conn.commit()
+
+
     def insert_detections(self, fires_records):
         """Insert fire detections into the database"""
         columns = sql_datatypes['SQL_detections_dtypes'].keys()
@@ -121,6 +132,7 @@ if __name__ == '__main__':
                                         longitude  real NOT NULL,
                                         continent  text NOT NULL,
                                         );"""
+
     #db.spin_up_fire_database([sql_create_detections_table, sql_create_events_table])
     # db.create_table(sql_create_detections_table)
     #wdb.create_table(sql_create_events_table)

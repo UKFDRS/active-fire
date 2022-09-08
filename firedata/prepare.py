@@ -128,20 +128,6 @@ def group_mode(dfr, group_cols, value_col, count_col):
         .sort_values(count_col, ascending = False) \
         .drop_duplicates(subset = group_cols)
 
-def per_fire(dfr):
-    dfg = dfr.groupby('event')
-    lc = group_mode(dfm, ['event'], 'lc', 'lc')
-    cn = group_mode(dfr, ['event'], 'admin', 'admin')
-    dfg = dfg.agg(size = ('type', 'count'),
-                  start_date = ('date', 'min'),
-                  last_date = ('date', 'max'),
-                  active = ('active', 'first'),
-                  longitude = ('longitude', 'median'),
-                  latitude = ('latitude', 'median')).reset_index()
-    dfg = pd.merge(dfg, lc[['event', 'lc']], on = group_col, how = 'left')
-    dfg = pd.merge(dfg, cn[['event', 'admin']], on = group_col, how = 'left')
-    return dfg
-
 def clean_nrt(dfr):
     """
     Drop fire events which are primarily stationary detections,
@@ -215,37 +201,67 @@ class PrepData(object):
     def __init__(self, sensor):
         self.date_now = pd.Timestamp.utcnow()
 
-    def prepare_dataset(self, dataset):
-        """Selects needed columns from fire detections dataset,
-        and adds missing ones. Works both with archive and nrt
-        datasets"""
-        sql_columns = sql_datatypes['SQL_detections_dtypes'].keys()
-        sql_event_columns = sql_datatypes['SQL_events_dtypes'].keys()
+    def columns_dtypes(self, dataset, dtype_dict):
+        """Selects required columns and sets data types as per
+        dtype dictionary.
+        """
+        dataset = dataset[dtype_dict.keys()]
+        dataset = dataset.astype(dtype_dict)
+        return dataset
+
+
+
+    def prepare_detections_dataset(self, dataset):
+        """Convenience method combining several processes into one.
+        Adds missing columns and additional information to 
+        the detections dataset. Sets data types and returns the required
+        columns only. Works both with archive and nrt
+        datasets. TODO quite a lot going on here, perhaps split.
+        """
         # If no date column add one
         if 'date' not in dataset:
             dataset['date'] = FireDate.fire_dates(dataset)
         # If no type column assume nrt dataset
         if 'type' not in dataset:
             dataset['type'] = 4
+        # remap daynight to integer
+        daynight_map = {'D': 1, 'N': 0}
+        dataset['daynight'] = dataset['daynight'].map(daynight_map)
         # Add country code
         dataset['admin'] = self.country_code(dataset)
         # Add land cover
         dataset = self.modis_lulc(dataset)
-        # remap daynight to integer
-        daynight_map = {'D': 1, 'N': 0}
-        dataset['daynight'] = dataset['daynight'].map(daynight_map)
         # datetime to unix time
         dataset['date'] = FireDate.unix_time(dataset['date'])
         dataset = dataset.sort_values(by='date').reset_index(drop=True)
         # filter
         dataset = filter_non_vegetation_events(dataset)
-        # aggregate per fire
-        per_fire = self.per_fire(dataset)
-        print(per_fire.columns)
-        dataset = dataset.loc[:, dataset.columns.isin(sql_columns)]
-        per_fire = per_fire.loc[:, per_fire.columns.isin(sql_event_columns)]
-        print(per_fire.columns)
-        return dataset, per_fire
+        # add a dummy id column
+        dataset['id'] = dataset.index
+        sql_dtypes = sql_datatypes['SQL_detections_dtypes']
+        dataset = self.columns_dtypes(dataset, sql_dtypes)
+        return dataset
+
+    def prepare_event_dataset(self, dataset):
+        """Generate per event dataset.
+        """
+        dfg = dataset.groupby('event')
+        lc = group_mode(dataset, ['event'], 'lc', 'glc')
+        cn = group_mode(dataset, ['event'], 'admin', 'gadmin')
+        dfg = dfg.agg(size = ('type', 'count'),
+                      start_date = ('date', 'min'),
+                      last_date = ('date', 'max'),
+                      active = ('active', 'first'),
+                      longitude = ('longitude', 'median'),
+                      latitude = ('latitude', 'median')
+                      ).reset_index()
+        dfg = pd.merge(dfg, lc[['event', 'lc']], on = 'event', how = 'left')
+        dfg = pd.merge(dfg, cn[['event', 'admin']], on = 'event', how = 'left')
+        dfg = self.get_continent(dfg)
+        dfg['duration'] = dfg.last_date - dfg.start_date
+        sql_dtypes = sql_datatypes['SQL_events_dtypes']
+        dataset = self.columns_dtypes(dfg, sql_dtypes)
+        return dataset
 
     def modis_lulc(self, dataset):
         """Add land cover from MODIS MCD12Q1 product""" 
@@ -314,21 +330,6 @@ class PrepData(object):
         dfr.loc[dfr.continent==-999, 'continent'] = 'None'
         return dfr
 
-    def per_fire(self, dfr):
-        dfg = dfr.groupby('event')
-        lc = group_mode(dfr, ['event'], 'lc', 'glc')
-        cn = group_mode(dfr, ['event'], 'admin', 'gadmin')
-        dfg = dfg.agg(size = ('type', 'count'),
-                      start_date = ('date', 'min'),
-                      last_date = ('date', 'max'),
-                      active = ('active', 'first'),
-                      longitude = ('longitude', 'median'),
-                      latitude = ('latitude', 'median')).reset_index()
-        dfg = pd.merge(dfg, lc[['event', 'lc']], on = 'event', how = 'left')
-        dfg = pd.merge(dfg, cn[['event', 'admin']], on = 'event', how = 'left')
-        dfg = self.get_continent(dfg)
-        return dfg
-
     def prepare_nrt_dataset(self, dataset):
         """Adds required columns and sets data types of the nrt dataset"""
         # In case dataset doesn't have instrument column:
@@ -373,10 +374,3 @@ class PrepData(object):
         archive_end_dt = pd.Timestamp(self.archive_end)
         nrt_selected = nrt[nrt.date.values > archive_end_dt]
         nrt_selected.to_parquet(self.nrt_dataset_path)
-if __name__ == "__main__":
-    pr = PrepData('VIIRS_NPP')
-    dpath = os.path.join(pr.data_path, 'VIIRS_NPP/fire_archive_SV-C2_2012.parquet')
-    dfr = pd.read_parquet(dpath)
-    print('fin reading')
-    dfr = pr.prepare_dataset(dfr)
-    dfg = per_fire(dfr)
