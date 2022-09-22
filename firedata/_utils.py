@@ -121,16 +121,17 @@ sql_datatypes = {
         'event': 'int',
         'active': 'int'
         },
-    'SQL_events_dtypes': {
+    'SQL_events_dtypes': { 
         'event': 'int',
         'active': 'int',
-        'size': 'int',
+        'tot_size': 'int',
+        'max_size': 'int',
         'start_date': 'int',
         'last_date': 'int',
-        'duration': 'int',
         'latitude': 'float32',
         'longitude': 'float32',
-        'continent': object
+        'continent': object,
+        'name': object
         }
     }
 

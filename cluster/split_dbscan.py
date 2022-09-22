@@ -46,14 +46,3 @@ class SplitDBSCAN(DBSCAN):
         # mask indicating all within reach self.labels_
         active_mask = np.isin(self.labels_, active_labels)
         return active_mask
-
-    def cluster_dataframe(self, dfr):
-        """Convenience method to cluster dataset passed as pandas DataFrame (dfr).
-        Must contain longitude, latitude and date columns.
-        """
-        indx, indy = ModisGrid.modis_sinusoidal_grid_index(dfr.longitude, dfr.latitude)
-        day_since = FireDate.days_since(dfr.date)
-        ars = np.column_stack([day_since, indx, indy])
-        self.fit(ars)
-        active_mask = self.split(ars)
-        return self.labels_.astype(int), active_mask

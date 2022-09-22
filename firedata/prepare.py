@@ -44,36 +44,6 @@ def clean_viirs(dfr):
     print(dfr.shape)
     return dfr
 
-def filter_non_vegetation_events(dfr):
-    """
-    Drop fire events which are primarily non_vegetation detections,
-    (water and urban) and also unclassified
-    """
-    lc_count = dfr.groupby(['event'])['lc'].value_counts().unstack(fill_value=0)
-    # drop detections which are classed as static
-    # drop urban events (> 50% urban detections)
-    if 13 in lc_count:
-        urban_rat = lc_count[13] / (lc_count.sum(axis=1))
-        urban_rat = urban_rat.reset_index(name='urban_ratio')
-        dfr = dfr.merge(urban_rat, on='event')
-        dfr = dfr[dfr.urban_ratio < 0.3]
-        dfr = dfr.drop('urban_ratio', axis=1)
-    # drop water events and unclassified (> 50% water detections)
-    if 0 in lc_count:
-        water_rat = lc_count[0] / (lc_count.sum(axis=1))
-        water_rat = water_rat.reset_index(name='water_ratio')
-        dfr = dfr.merge(water_rat, on='event')
-        dfr = dfr[dfr.water_ratio < 0.5]
-        dfr = dfr.drop('water_ratio', axis=1)
-    if 255 in lc_count:
-        unclass_rat = lc_count[255] / (lc_count.sum(axis=1))
-        water_rat = unclass_rat.reset_index(name='unclass_rat')
-        dfr = dfr.merge(unclass_rat, on='event')
-        dfr = dfr[dfr.unclass_rat < 0.5]
-        dfr = dfr.drop('unclass_ratio', axis=1)
-    return dfr
-
-
 def travel_time(dfr):
     """
     Travel time to city/town added to the ba dataset (dfr).
@@ -197,16 +167,18 @@ class PrepData(object):
     data_path = config['OS']['data_path']
     lulc_path = config['OS']['lulc_data_path']
     admin_path = config['OS']['admin_data_path']
+    sql_datatypes = sql_datatypes
 
     def __init__(self, sensor):
         self.date_now = pd.Timestamp.utcnow()
 
-    def columns_dtypes(self, dataset, dtype_dict):
+    def columns_dtypes(self, dataset, dtypes_dict_key):
         """Selects required columns and sets data types as per
         dtype dictionary.
         """
-        dataset = dataset[dtype_dict.keys()]
-        dataset = dataset.astype(dtype_dict)
+        sql_dtypes = self.sql_datatypes[dtypes_dict_key]
+        dataset = dataset[sql_dtypes.keys()]
+        dataset = dataset.astype(sql_dtypes)
         return dataset
 
 
@@ -216,7 +188,7 @@ class PrepData(object):
         Adds missing columns and additional information to 
         the detections dataset. Sets data types and returns the required
         columns only. Works both with archive and nrt
-        datasets. TODO quite a lot going on here, perhaps split.
+        datasets. TODO a lot going on here, perhaps split.
         """
         # If no date column add one
         if 'date' not in dataset:
@@ -224,6 +196,9 @@ class PrepData(object):
         # If no type column assume nrt dataset
         if 'type' not in dataset:
             dataset['type'] = 4
+        # add placeholder event/active columns
+        if 'event' not in dataset:
+            dataset['event'] = -1
         # remap daynight to integer
         daynight_map = {'D': 1, 'N': 0}
         dataset['daynight'] = dataset['daynight'].map(daynight_map)
@@ -233,35 +208,59 @@ class PrepData(object):
         dataset = self.modis_lulc(dataset)
         # datetime to unix time
         dataset['date'] = FireDate.unix_time(dataset['date'])
-        dataset = dataset.sort_values(by='date').reset_index(drop=True)
-        # filter
-        dataset = filter_non_vegetation_events(dataset)
-        # add a dummy id column
-        dataset['id'] = dataset.index
-        sql_dtypes = sql_datatypes['SQL_detections_dtypes']
-        dataset = self.columns_dtypes(dataset, sql_dtypes)
         return dataset
 
     def prepare_event_dataset(self, dataset):
         """Generate per event dataset.
         """
         dfg = dataset.groupby('event')
-        lc = group_mode(dataset, ['event'], 'lc', 'glc')
+        #lc = group_mode(dataset, ['event'], 'lc', 'glc')
         cn = group_mode(dataset, ['event'], 'admin', 'gadmin')
-        dfg = dfg.agg(size = ('type', 'count'),
+        dfg = dfg.agg(tot_size = ('type', 'count'),
                       start_date = ('date', 'min'),
                       last_date = ('date', 'max'),
                       active = ('active', 'first'),
                       longitude = ('longitude', 'median'),
                       latitude = ('latitude', 'median')
                       ).reset_index()
-        dfg = pd.merge(dfg, lc[['event', 'lc']], on = 'event', how = 'left')
+        # dfg = pd.merge(dfg, lc[['event', 'lc']], on = 'event', how = 'left')
         dfg = pd.merge(dfg, cn[['event', 'admin']], on = 'event', how = 'left')
         dfg = self.get_continent(dfg)
-        dfg['duration'] = dfg.last_date - dfg.start_date
-        sql_dtypes = sql_datatypes['SQL_events_dtypes']
-        dataset = self.columns_dtypes(dfg, sql_dtypes)
-        return dataset
+        # dfg['duration'] = dfg.last_date - dfg.start_date
+        max_size = dataset.groupby(['event', 'date'])['type'].count()
+        dfg['max_size'] = max_size.groupby(level=0).max().values
+        dfg['name'] = None
+        return dfg
+
+    @classmethod
+    def filter_non_vegetation_events(cls, dfr):
+        """
+        Drop fire events which are primarily non_vegetation detections,
+        (water and urban) and also unclassified
+        """
+        lc_count = dfr.groupby(['event'])['lc'].value_counts().unstack(fill_value=0)
+        # drop detections which are classed as static
+        # drop urban events (> 50% urban detections)
+        if 13 in lc_count:
+            urban_rat = lc_count[13] / (lc_count.sum(axis=1))
+            urban_rat = urban_rat.reset_index(name='urban_ratio')
+            dfr = dfr.merge(urban_rat, on='event')
+            dfr = dfr[dfr.urban_ratio < 0.3]
+            dfr = dfr.drop('urban_ratio', axis=1)
+        # drop water events and unclassified (> 50% water detections)
+        if 0 in lc_count:
+            water_rat = lc_count[0] / (lc_count.sum(axis=1))
+            water_rat = water_rat.reset_index(name='water_ratio')
+            dfr = dfr.merge(water_rat, on='event')
+            dfr = dfr[dfr.water_ratio < 0.5]
+            dfr = dfr.drop('water_ratio', axis=1)
+        if 255 in lc_count:
+            unclass_rat = lc_count[255] / (lc_count.sum(axis=1))
+            water_rat = unclass_rat.reset_index(name='unclass_rat')
+            dfr = dfr.merge(unclass_rat, on='event')
+            dfr = dfr[dfr.unclass_rat < 0.5]
+            dfr = dfr.drop('unclass_ratio', axis=1)
+        return dfr
 
     def modis_lulc(self, dataset):
         """Add land cover from MODIS MCD12Q1 product""" 

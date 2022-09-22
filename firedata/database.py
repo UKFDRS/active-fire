@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import pandas as pd
 from sqlite3 import Error
 from firedata._utils import FireDate, sql_datatypes
 from configuration import Config
@@ -36,6 +37,12 @@ class DataBase(object):
             except Error as e:
                 print(e)
 
+    def run_sql(self, sql_string):
+        with self.create_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(sql_string)
+            conn.commit()
+
     def return_single_value(self, sql_string):
         """Query a single value""" 
         with self.create_connection() as conn:
@@ -43,6 +50,15 @@ class DataBase(object):
             cur.execute(sql_string)
             value = cur.fetchone()[0]
             return value
+
+    def return_many_values(self, sql_string):
+        """Query a single value""" 
+        with self.create_connection() as conn:
+            dataset = pd.read_sql_query(sql_string, conn)
+            #cur = conn.cursor()
+            #cur.execute(sql_string)
+            #values = cur.fetchall()
+            return dataset
 
     def insert_records(self, sql_string, records):
         with self.create_connection() as conn:
