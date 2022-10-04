@@ -44,10 +44,12 @@ sql_create_events_table = """ CREATE TABLE IF NOT EXISTS events (
 
 class ProcSQL(PrepData):
     def __init__(self, sensor):
+        config = Config.config()
+        self.eps = config.getint('CLUSTER', 'eps')
+        self.min_samples = config.getint('CLUSTER', 'min_samples')
+        self.chunk_size = config.getint('CLUSTER', 'chunk_size')
         self.sensor = sensor
-        self.db = DataBase('trial_populate')
-        # TODO this should be set in config
-        self.eps = 5
+        self.db = DataBase(f'{sensor}')
 
     def cluster_dataframe(self, dfr):
         """Convenience method to cluster dataset passed as pandas DataFrame (dfr).
@@ -57,7 +59,7 @@ class ProcSQL(PrepData):
         indx, indy = ModisGrid.modis_sinusoidal_grid_index(dfr.longitude, dfr.latitude)
         day_since = (dfr.date / 86400).astype(int)
         ars = np.column_stack([day_since, indx, indy])
-        cl = SplitDBSCAN(eps = self.eps, min_samples=1)
+        cl = SplitDBSCAN(eps=self.eps, min_samples=self.min_samples)
         cl.fit(ars)
         active_mask = cl.split(ars)
         return cl.labels_.astype(int), active_mask
@@ -138,7 +140,6 @@ class ProcSQL(PrepData):
         active = self.db.return_many_values(sql_string)
         return active
 
-
     def delete_active(self):
         print('deleting active events')
         sql_string = """DELETE FROM events
@@ -157,9 +158,55 @@ class ProcSQL(PrepData):
         dataset['id'] += id_increment 
         return dataset
 
+    def populate_archive(self):
+        archive_dir = os.path.join(self.data_path,
+                                      self.sensor,
+                           'fire_archive*.parquet')
+        arch_files = glob.glob(archive_dir)
+        arch_files.sort()
+        for file_name in arch_files[:1]:
+            print(f'proc file {file_name}')
+            dfr = pd.read_parquet(file_name)
+            assert dfr.date.is_monotonic_increasing, 'Must be sorted by date'
+            chunks = -(-len(dfr.index) // self.chunk_size)
+            dfrs = np.array_split(dfr, chunks, axis=0)
+            for nr, chunk in enumerate(dfrs):
+                print(f'doing chunk {nr}', chunk.shape) 
+                chunk = pc.incement_index(chunk)
+                chunk = pc.prepare_detections_dataset(chunk)
+                # get active events
+                active = pc.active_detections()
+                #concat active and new chunk
+                chunk = pd.concat([active, chunk])
+                # cluster new chunk and active
+                print('clustiring')
+                event, active_flag = pc.cluster_dataframe(chunk)
+                print('clustiring done')
+                chunk['event'] = event.astype(int)
+                chunk['event'] = pc.event_ids(chunk)
+                chunk['active'] = active_flag.astype(int)
+                events_chunk = pc.prepare_event_dataset(chunk)
+
+                chunk = pc.columns_dtypes(chunk, 'SQL_detections_dtypes')
+                events_chunk = pc.columns_dtypes(events_chunk, 'SQL_events_dtypes')
+                pc.delete_active()
+
+                print('insert events')
+                pc.db.insert_events(gdfr.values.tolist())
+                print('insert detections')
+                pc.db.insert_detections(dfr.values.tolist())
+                print('insert done')
+
+
+            
+    def chunks_to_db(self, dfrs):
+        """Prepare, cluster and insert chunks to database""" 
+        pass
+
+
     
 
-eps = 5
+"""
 chunk_size = 1000000
 dfr = pd.read_parquet('firedata/data/VIIRS_NPP/fire_archive_SV-C2_2012.parquet')
 dfr = dfr.sort_values('date')
@@ -193,3 +240,9 @@ for nr, dfr in enumerate(dfrs):
     print('insert detections')
     pc.db.insert_detections(dfr.values.tolist())
     print('insert done')
+
+"""
+
+pc = ProcSQL('VIIRS_NPP')
+pc.db.spin_up_fire_database([sql_create_detections_table, sql_create_events_table])
+pc.populate_archive()
