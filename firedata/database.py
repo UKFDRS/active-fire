@@ -2,7 +2,7 @@ import os
 import sqlite3
 import pandas as pd
 from sqlite3 import Error
-from firedata._utils import FireDate, sql_datatypes
+from firedata._utils import sql_datatypes
 from configuration import Config
 
 class DataBase(object):
@@ -24,16 +24,13 @@ class DataBase(object):
             print(e)
         return conn
 
-    def create_table(self, create_table_sql):
-        """ create a table from the create_table_sql statement
-        :param conn: Connection object
-        :param create_table_sql: a CREATE TABLE statement
-        :return:
+    def execute_sql(self, sql_string):
+        """ Execute sql_string
         """
         with self.create_connection() as conn:
             try:
                 c = conn.cursor()
-                c.execute(create_table_sql)
+                c.execute(sql_string)
             except Error as e:
                 print(e)
 
@@ -60,12 +57,6 @@ class DataBase(object):
             #values = cur.fetchall()
             return dataset
 
-    def insert_records(self, sql_string, records):
-        with self.create_connection() as conn:
-            cur = conn.cursor()
-            cur.executemany(sql_string, records)
-            conn.commit()
-
     def insert_events(self, fires_records):
         """Insert fire events into the database"""
         columns = sql_datatypes['SQL_events_dtypes'].keys()
@@ -77,78 +68,38 @@ class DataBase(object):
             conn.commit()
 
 
-    def insert_detections(self, fires_records):
-        """Insert fire detections into the database"""
-        columns = sql_datatypes['SQL_detections_dtypes'].keys()
+    def insert_records(self, table, records, columns):
+        """Insert records into the database"""
         qmks = ', '.join(['?'] * len(columns))
-        sql = f"""INSERT INTO detections VALUES ({qmks})""" 
+        sql = f"""INSERT INTO {table} VALUES ({qmks})""" 
         with self.create_connection() as conn:
             cur = conn.cursor()
-            cur.executemany(sql, fires_records)
+            cur.executemany(sql, records)
             conn.commit()
 
-    def create_fire_tables(self, sql_list):
-        """Create a table for each sql_string in sql_list"""
-        for sql_string in sql_list:
-            self.create_table(sql_string) 
+    def insert_extinct(self, records):
+        columns = sql_datatypes['SQL_detections_dtypes'].keys()
+        self.insert_records('detections_extinct', records, columns)
+
+    def insert_active(self, records):
+        columns = sql_datatypes['SQL_detections_dtypes'].keys()
+        self.insert_records('detections_active', records, columns)
+
+    def insert_events(self, records):
+        columns = sql_datatypes['SQL_events_dtypes'].keys()
+        self.insert_records('events', records, columns)
 
     def spin_up_fire_database(self, sql_list):
         """Convenience methot to create database and create the tables
         given as sql strings in sql_list"""
         self.create_connection()
-        self.create_fire_tables(sql_list)
+        for sql_string in sql_list:
+            self.execute_sql(sql_string) 
 
 
 if __name__ == '__main__':
     name = 'test'
     db = DataBase(name)
-
-    detections_table_global = """CREATE TABLE IF NOT EXISTS detections (
-                                    id        integer PRIMARY KEY,
-                                    latitude  real    NOT NULL,
-                                    longitude real    NOT NULL,
-                                    frp       real    NOT NULL,
-                                    daynight  integer NOT NULL,
-                                    type      integer NOT NULL,
-                                    date      integer NOT NULL,
-                                    lc        integer NOT NULL,
-                                    admin_lc  integer,
-                                    admin     text    NOT NULL,
-                                    cont      text    NOT NULL,
-                                    event     integer NOT NULL,
-                                    FOREIGN KEY (event) REFERENCES events (event_id)
-                                    unique (latitude, longitude, date)
-                                    ); """
-
-
-    sql_create_detections_table = """ CREATE TABLE IF NOT EXISTS detections (
-                                        id        integer PRIMARY KEY,
-                                        latitude  real    NOT NULL,
-                                        longitude real    NOT NULL,
-                                        frp       real    NOT NULL,
-                                        daynight  integer NOT NULL,
-                                        type      integer NOT NULL,
-                                        date      integer NOT NULL,
-                                        lc        integer NOT NULL,
-                                        admin     integer NOT NULL,
-                                        event     integer NOT NULL,
-                                        active    integer NOT NULL,
-                                        FOREIGN KEY (event) REFERENCES events (event)
-                                        unique (latitude, longitude, date)
-                                        ); """
-
-    sql_create_events_table = """ CREATE TABLE IF NOT EXISTS events (
-                                        event      integer PRIMARY KEY,
-                                        active     integer NOT NULL,
-                                        size       integer NOT NULL,
-                                        start_date integer NOT NULL,
-                                        last_date  integer NOT NULL,
-                                        duration   integer NOT NULL,
-                                        latitude   real NOT NULL,
-                                        longitude  real NOT NULL,
-                                        continent  text NOT NULL,
-                                        );"""
-
     #db.spin_up_fire_database([sql_create_detections_table, sql_create_events_table])
     # db.create_table(sql_create_detections_table)
     #wdb.create_table(sql_create_events_table)

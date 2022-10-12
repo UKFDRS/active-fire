@@ -5,6 +5,7 @@ tadasnik tadas.nik@gmail.com
 """
 import os
 import glob
+import time
 import pandas as pd
 import numpy as np
 from configuration import Config
@@ -13,34 +14,6 @@ from firedata.database import DataBase
 from firedata.prepare import PrepData
 from cluster.split_dbscan import SplitDBSCAN
 from firedata._utils import ModisGrid
-
-sql_create_detections_table = """ CREATE TABLE IF NOT EXISTS detections (
-                                    id        integer PRIMARY KEY,
-                                    latitude  real    NOT NULL,
-                                    longitude real    NOT NULL,
-                                    frp       real    NOT NULL,
-                                    daynight  integer NOT NULL,
-                                    type      integer NOT NULL,
-                                    date      integer NOT NULL,
-                                    lc        integer NOT NULL,
-                                    admin     integer,
-                                    event     integer NOT NULL,
-                                    active    integer NOT NULL,
-                                    FOREIGN KEY (event) REFERENCES events (event)
-                                    ); """
-
-sql_create_events_table = """ CREATE TABLE IF NOT EXISTS events (
-                                    event      integer PRIMARY KEY,
-                                    active     integer NOT NULL,
-                                    tot_size   integer NOT NULL,
-                                    max_size   integer NOT NULL,
-                                    start_date integer NOT NULL,
-                                    last_date  integer NOT NULL,
-                                    latitude   real NOT NULL,
-                                    longitude  real NOT NULL,
-                                    continent  text,
-                                    name       text
-                                    );"""
 
 class ProcSQL(PrepData):
     def __init__(self, sensor):
@@ -71,25 +44,9 @@ class ProcSQL(PrepData):
         event_id = dfr.groupby('event')['id'].transform('first')
         return event_id
 
-    def populate_db(self, dfr, event, active):
-        dfr['events_post'] = event
-        dfr['active_post'] = active.astype(int)
-        past_active = dfr
-
-
-
-    def transform_labels(self, dataset):
-        """obsolete"""
-        done_mask = dataset.active == False
-        le = LabelEncoder()
-        done_labels = le.fit_transform(dataset[done_mask]['event'])
-        done_labels = done_labels + self.last_event() + 1
-        dataset.loc[done_mask, 'event'] = done_labels
-        done_events = dataset[done_mask]
-
     def last_event(self):
         """Return max event label"""
-        sql_string = ("SELECT max(event) FROM events WHERE active = 0;")
+        sql_string = ("SELECT max(event) FROM events WHERE active = 0")
         try:
             max_event = self.db.return_single_value(sql_string)
         except:
@@ -97,10 +54,15 @@ class ProcSQL(PrepData):
         return max_event
 
     def last_id(self):
-        """Return max event label"""
-        sql_string = ("SELECT max(id) FROM detections")
+        """Query max id from extinct and active detections.
+        Returns only one max value.
+        """
+        sql_ext = ("SELECT max(id) FROM detections_extinct")
+        sql_act = ("SELECT max(id) FROM detections_active")
         try:
-            max_id = self.db.return_single_value(sql_string)
+            max_id_ext = self.db.return_single_value(sql_ext)
+            max_id_act = self.db.return_single_value(sql_act)
+            max_id = max(max_id_ext, max_id_act)
         # if database does not exist
         except:
             max_id = 0
@@ -109,140 +71,150 @@ class ProcSQL(PrepData):
             max_id = 0
         return max_id
 
-
     def last_date(self):
         """Return record end datetime."""
         sql_string = ("SELECT date(max(date), 'unixepoch')"
-                        "FROM detections")
+                        "FROM detections_active")
         max_date = self.db.return_single_value(sql_string)
         return max_date
     
-    
     def active_detections(self):
-        """Return active fires from detections as DataFrame"""
-        #sql_string = """SELECT * FROM detections WHERE active=1"""
-        sql_string = """SELECT 
-                          d.id AS id,
-                          d.latitude AS latitude,
-                          d.longitude AS longitude,
-                          d.frp AS frp,
-                          d.daynight AS daynight,
-                          d.type AS type,
-                          d.date AS date,
-                          d.lc AS lc,
-                          d.admin AS admin,
-                          d.event AS event
-                        FROM detections d
-                          INNER JOIN events
-                          ON d.event == events.event
-                          WHERE events.active == 1
-                          """
+        """Return all fire records from detections_active as DataFrame"""
+        sql_string = """SELECT * FROM detections_active"""
         active = self.db.return_many_values(sql_string)
         return active
 
     def delete_active(self):
+        """Delete detections active table and create an empty one"""
         print('deleting active events')
         sql_string = """DELETE FROM events
                         WHERE events.active = 1"""
-        self.db.run_sql(sql_string)
+        self.db.execute_sql(sql_string)
         print('deleting active detections')
-        sql_string = """DELETE FROM detections
-                        WHERE detections.active = 1"""
-        self.db.run_sql(sql_string)
+        sql_string = "DROP TABLE detections_active"
+        self.db.execute_sql(sql_string)
         print('deleting done')
+        create_active = Config.config().get(section='SQL',
+                option='sql_create_active_table')
+        self.db.execute_sql(create_active)
         
     def incement_index(self, dataset):
+        """Add record id column to the detections dataset
+        starting with highest id already in the database"""
         id_increment = self.last_id()
         if id not in dataset:
             dataset['id'] = range(1, (len(dataset) + 1))
         dataset['id'] += id_increment 
         return dataset
+    
+    def consistency_check(self, dfr):
+        """Verify if the fire detections dataset (dfr) is consistent
+        in time with the records in detections_active in the database.
+        Checks if min date in the dfr is monotonicly increasing and follows
+        the max date in the database"""
+        assert dfr.date.is_monotonic_increasing(), 'The date column is not ordered'
+        max_date_db = pd.Timestamp(self.last_date())
+        min_date_dfr = pd.to_datetime(dfr.date.min(), unit='s')
+        days_dif = (min_date_dfr - max_date_db).days
+        print('difference in days', days_dif)
+        # TODO finish
+
 
     def populate_archive(self):
+        """Populate database with active fire archive"""
         archive_dir = os.path.join(self.data_path,
                                       self.sensor,
                            'fire_archive*.parquet')
         arch_files = glob.glob(archive_dir)
         arch_files.sort()
-        for file_name in arch_files[:1]:
+        print(arch_files)
+        for file_name in arch_files:
             print(f'proc file {file_name}')
             dfr = pd.read_parquet(file_name)
             assert dfr.date.is_monotonic_increasing, 'Must be sorted by date'
-            chunks = -(-len(dfr.index) // self.chunk_size)
-            dfrs = np.array_split(dfr, chunks, axis=0)
-            for nr, chunk in enumerate(dfrs):
-                print(f'doing chunk {nr}', chunk.shape) 
-                chunk = pc.incement_index(chunk)
-                chunk = pc.prepare_detections_dataset(chunk)
-                # get active events
-                active = pc.active_detections()
-                #concat active and new chunk
-                chunk = pd.concat([active, chunk])
-                # cluster new chunk and active
-                print('clustiring')
-                event, active_flag = pc.cluster_dataframe(chunk)
-                print('clustiring done')
-                chunk['event'] = event.astype(int)
-                chunk['event'] = pc.event_ids(chunk)
-                chunk['active'] = active_flag.astype(int)
-                events_chunk = pc.prepare_event_dataset(chunk)
+            self.dataframe_to_db(dfr)
 
-                chunk = pc.columns_dtypes(chunk, 'SQL_detections_dtypes')
-                events_chunk = pc.columns_dtypes(events_chunk, 'SQL_events_dtypes')
-                pc.delete_active()
+    def dataframe_to_db(self, dfr):
+        """Prepare, cluster and insert active fire detections
+        stored in Pandas DataFrame into the database
+        """ 
+        # TODO need do checks if detections in the dataframe are consistent
+        # with the database in terms of date and if they can be merged with
+        # the active events in the database.
+        # Also, check and remove duplicates.
+        chunks = -(-len(dfr.index) // self.chunk_size)
+        dfrs = np.array_split(dfr, chunks, axis=0)
+        for nr, chunk in enumerate(dfrs):
+            print(f'doing chunk {nr}', chunk.shape) 
 
-                print('insert events')
-                pc.db.insert_events(gdfr.values.tolist())
-                print('insert detections')
-                pc.db.insert_detections(dfr.values.tolist())
-                print('insert done')
+            start_g = time.time()
+            chunk = self.prepare_detections_dataset(chunk)
+            end = time.time()
+            print("The time of execution of prepare is :",
+                  (end-start_g),"s")
 
+            start = time.time()
+            # get active events
+            active = self.active_detections()
+            end = time.time()
+            print("The time of execution of get active is :",
+                  (end-start), "s")
+            #self.consistency_check(active, chunk)
+            #concat active and new chunk
 
+            start = time.time()
+            chunk = pd.concat([active, chunk])
+            # drop duplicates
+            chunk = chunk.drop_duplicates(subset=['longitude', 'latitude', 'date'])
+            chunk = self.incement_index(chunk)
+            # cluster new chunk and active
+            print('clustering')
+            event, active_flag = self.cluster_dataframe(chunk)
+            print('clustering done')
+            chunk['event'] = event.astype(int)
+            chunk['event'] = self.event_ids(chunk)
+            chunk['active'] = active_flag.astype(int)
+            end = time.time()
+            print("The time of execution of processing/clustering is :",
+                  (end-start), "s")
+
+            start = time.time()
+            events_chunk = self.prepare_event_dataset(chunk)
+            events_chunk = self.columns_dtypes(events_chunk, 'SQL_events_dtypes')
+            end = time.time()
+            print("The time of execution of events prep is :",
+                  (end-start), "s")
+            start = time.time()
+            self.db.insert_events(events_chunk.values.tolist())
+            end = time.time()
+            print("The time of execution of events insert is :",
+                  (end-start), "s")
             
-    def chunks_to_db(self, dfrs):
-        """Prepare, cluster and insert chunks to database""" 
+            start = time.time()
+            chunk_active = chunk[chunk.active == 1].copy()
+            chunk_active = self.columns_dtypes(chunk_active, 'SQL_detections_dtypes')
+            self.delete_active()
+            self.db.insert_active(chunk_active.values.tolist())
+            end = time.time()
+            print("The time of execution of insert active is :",
+                  (end-start), "s")
+
+            start = time.time()
+            chunk = chunk[chunk.active == 0]
+            chunk = self.columns_dtypes(chunk, 'SQL_detections_dtypes')
+            self.db.insert_extinct(chunk.values.tolist())
+            end = time.time()
+            print("The time of execution of insert extinct is :",
+                  (end-start), "s")
+            print("TATAL time is :",
+                  (end-start_g),"s")
+
         pass
 
-
-    
-
-"""
-chunk_size = 1000000
-dfr = pd.read_parquet('firedata/data/VIIRS_NPP/fire_archive_SV-C2_2012.parquet')
-dfr = dfr.sort_values('date')
-chunks = -(-len(dfr.index) // chunk_size)
-dfrs = np.array_split(dfr, chunks, axis=0)
 pc = ProcSQL('VIIRS_NPP')
-pc.db.spin_up_fire_database([sql_create_detections_table, sql_create_events_table])
-for nr, dfr in enumerate(dfrs):
-    print(f'doing chunk {nr}', dfr.shape) 
-    dfr = pc.incement_index(dfr)
-    dfr = pc.prepare_detections_dataset(dfr)
-# get active events
-    active = pc.active_detections()
-#concat active and new chunk
-    dfr = pd.concat([active, dfr])
-# cluster new chunk and active
-    print('clustiring')
-    event, active_flag = pc.cluster_dataframe(dfr)
-    print('clustiring done')
-    dfr['event'] = event.astype(int)
-    dfr['event'] = pc.event_ids(dfr)
-    dfr['active'] = active_flag.astype(int)
-    gdfr = pc.prepare_event_dataset(dfr)
+sql_strings = [x[1] for x in Config.config().items('SQL')]
+pc.db.spin_up_fire_database(sql_strings)
+#pc.populate_archive()
+dfr = pd.read_parquet('firedata/data/VIIRS_NPP/fire_archive_SV-C2_2022.parquet')
+pc.dataframe_to_db(dfr)
 
-    dfr = pc.columns_dtypes(dfr, 'SQL_detections_dtypes')
-    gdfr = pc.columns_dtypes(gdfr, 'SQL_events_dtypes')
-    pc.delete_active()
-
-    print('insert events')
-    pc.db.insert_events(gdfr.values.tolist())
-    print('insert detections')
-    pc.db.insert_detections(dfr.values.tolist())
-    print('insert done')
-
-"""
-
-pc = ProcSQL('VIIRS_NPP')
-pc.db.spin_up_fire_database([sql_create_detections_table, sql_create_events_table])
-pc.populate_archive()

@@ -119,8 +119,8 @@ sql_datatypes = {
         'lc': 'int',
         'admin': 'int',
         'event': 'int',
-        'active': 'int'
         },
+
     'SQL_events_dtypes': { 
         'event': 'int',
         'active': 'int',
@@ -130,6 +130,7 @@ sql_datatypes = {
         'last_date': 'int',
         'latitude': 'float32',
         'longitude': 'float32',
+        'admin': 'int',
         'continent': object,
         'name': object
         }
