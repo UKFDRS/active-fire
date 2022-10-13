@@ -112,12 +112,11 @@ class ProcSQL(PrepData):
         in time with the records in detections_active in the database.
         Checks if min date in the dfr is monotonicly increasing and follows
         the max date in the database"""
-        assert dfr.date.is_monotonic_increasing(), 'The date column is not ordered'
         max_date_db = pd.Timestamp(self.last_date())
         min_date_dfr = pd.to_datetime(dfr.date.min(), unit='s')
         days_dif = (min_date_dfr - max_date_db).days
         print('difference in days', days_dif)
-        # TODO finish
+        assert (-1 < days_dif < 2), 'DataFrame is not consistent with db'
 
 
     def populate_archive(self):
@@ -138,17 +137,16 @@ class ProcSQL(PrepData):
         """Prepare, cluster and insert active fire detections
         stored in Pandas DataFrame into the database
         """ 
-        # TODO need do checks if detections in the dataframe are consistent
-        # with the database in terms of date and if they can be merged with
-        # the active events in the database.
-        # Also, check and remove duplicates.
+        assert dfr.date.is_monotonic_increasing, 'The date column is not ordered'
         chunks = -(-len(dfr.index) // self.chunk_size)
         dfrs = np.array_split(dfr, chunks, axis=0)
         for nr, chunk in enumerate(dfrs):
             print(f'doing chunk {nr}', chunk.shape) 
 
             start_g = time.time()
+            # TODO move prepare outside this method. Needs to happen before to the whole dfr
             chunk = self.prepare_detections_dataset(chunk)
+
             end = time.time()
             print("The time of execution of prepare is :",
                   (end-start_g),"s")
@@ -159,11 +157,12 @@ class ProcSQL(PrepData):
             end = time.time()
             print("The time of execution of get active is :",
                   (end-start), "s")
-            #self.consistency_check(active, chunk)
             #concat active and new chunk
 
             start = time.time()
+            self.consistency_check(chunk)
             chunk = pd.concat([active, chunk])
+            self.consistency_check(chunk)
             # drop duplicates
             chunk = chunk.drop_duplicates(subset=['longitude', 'latitude', 'date'])
             chunk = self.incement_index(chunk)
@@ -212,8 +211,8 @@ class ProcSQL(PrepData):
         pass
 
 pc = ProcSQL('VIIRS_NPP')
-sql_strings = [x[1] for x in Config.config().items('SQL')]
-pc.db.spin_up_fire_database(sql_strings)
+#sql_strings = [x[1] for x in Config.config().items('SQL')]
+#pc.db.spin_up_fire_database(sql_strings)
 #pc.populate_archive()
 dfr = pd.read_parquet('firedata/data/VIIRS_NPP/fire_archive_SV-C2_2022.parquet')
 pc.dataframe_to_db(dfr)
