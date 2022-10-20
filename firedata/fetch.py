@@ -60,7 +60,6 @@ class FetchNRT():
             last_line = lines[-1]
         return pd.Timestamp(last_line.split('NRT last datetime')[1])
 
-
     def day_url(self, date):
         """active fire data url for the date"""
         year = date.year
@@ -91,7 +90,7 @@ class FetchNRT():
     def fetch(self, start_date, end_date):
         """The main function performing data fetching. For each day (date)
         between start_date and end_date (inclusively) calls fetch_day_nrt
-        method appends the retrieved datasets.
+        method and appends the retrieved datasets.
         """
         nrt_new = None
         self.logger.info(f'Running fetch')

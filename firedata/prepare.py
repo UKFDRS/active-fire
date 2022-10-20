@@ -162,15 +162,13 @@ def read_hdf4(dataset_path, dataset=None):
         print('Could not read dataset {0}'.format(file_name))
         raise
 
-class PrepData(object):
-    config = Config.config()
-    data_path = config['OS']['data_path']
-    lulc_path = config['OS']['lulc_data_path']
-    admin_path = config['OS']['admin_data_path']
-    sql_datatypes = sql_datatypes
+class PrepData(Config):
 
     def __init__(self, sensor):
         self.date_now = pd.Timestamp.utcnow()
+        self.data_path = self.config['OS']['data_path']
+        self.lulc_path = self.config['OS']['lulc_data_path']
+        self.admin_path = self.config['OS']['admin_data_path']
 
     def columns_dtypes(self, dataset, dtypes_dict_key):
         """Selects required columns and sets data types as per
