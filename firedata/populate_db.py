@@ -215,7 +215,7 @@ class ProcSQL(PrepData):
     def get_nrt(self):
         base_url = self.config().get(self.sensor, 'base_url')
         fetcher = FetchNRT(self.sensor, self.nrt_token, base_url)
-        start_date = self.last_date()
+        start_date = pd.Timestamp(self.last_date(), tz='utc')
         end_date = pd.Timestamp.utcnow()
         dfr = fetcher.fetch(start_date, end_date)
         return dfr
@@ -224,7 +224,7 @@ class ProcSQL(PrepData):
 if __name__ == "__main__":
     pc = ProcSQL('VIIRS_NPP')
     nrt = pc.get_nrt()
-    pc.dataframe_to_db(dfr)
+    pc.dataframe_to_db(nrt)
 # sql_strings = [x[1] for x in Config.config().items('SQL')]
 # pc.db.spin_up_fire_database(sql_strings)
 # pc.populate_archive()
