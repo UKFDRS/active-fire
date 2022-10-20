@@ -205,15 +205,15 @@ class ProcSQL(PrepData):
             end = time.time()
             print("The time of execution of insert extinct is :",
                   (end-start), "s")
-            print("TATAL time is :",
+            print("TOTAL time is :",
                   (end-start_g),"s")
 
         pass
 
 pc = ProcSQL('VIIRS_NPP')
-#sql_strings = [x[1] for x in Config.config().items('SQL')]
-#pc.db.spin_up_fire_database(sql_strings)
-#pc.populate_archive()
-dfr = pd.read_parquet('firedata/data/VIIRS_NPP/fire_archive_SV-C2_2022.parquet')
-pc.dataframe_to_db(dfr)
+# sql_strings = [x[1] for x in Config.config().items('SQL')]
+# pc.db.spin_up_fire_database(sql_strings)
+# pc.populate_archive()
+# dfr = pd.read_parquet('firedata/data/VIIRS_NPP/fire_archive_SV-C2_2022.parquet')
+# pc.dataframe_to_db(dfr)
 
