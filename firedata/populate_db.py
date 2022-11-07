@@ -9,17 +9,17 @@ import time
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
-from firedata.database import DataBase
-from firedata.prepare import PrepData
-from firedata.fetch import FetchNRT
+from database import DataBase
+from prepare import PrepData
+from fetch import FetchNRT
 from cluster.split_dbscan import SplitDBSCAN
-from firedata._utils import ModisGrid
+from _utils import ModisGrid
 
 class ProcSQL(PrepData):
     def __init__(self, sensor):
-        self.eps = self.config().getint('CLUSTER', 'eps')
-        self.min_samples = self.config().getint('CLUSTER', 'min_samples')
-        self.chunk_size = self.config().getint('CLUSTER', 'chunk_size')
+        self.eps = self.config.getint('CLUSTER', 'eps')
+        self.min_samples = self.config.getint('CLUSTER', 'min_samples')
+        self.chunk_size = self.config.getint('CLUSTER', 'chunk_size')
         self.sensor = sensor
         self.db = DataBase(f'{sensor}')
 
@@ -93,7 +93,7 @@ class ProcSQL(PrepData):
         sql_string = "DROP TABLE detections_active"
         self.db.execute_sql(sql_string)
         print('deleting done')
-        create_active = Config.config().get(section='SQL',
+        create_active = self.config.get(section='SQL',
                 option='sql_create_active_table')
         self.db.execute_sql(create_active)
         
@@ -114,6 +114,8 @@ class ProcSQL(PrepData):
         max_date_db = pd.Timestamp(self.last_date())
         min_date_dfr = pd.to_datetime(dfr.date.min(), unit='s')
         days_dif = (min_date_dfr - max_date_db).days
+        print(f'last date in db {max_date_db}')
+        print(f'first date in nrt {min_date_dfr}')
         print('difference in days', days_dif)
         assert (-1 < days_dif < 2), 'DataFrame is not consistent with db'
 
@@ -127,14 +129,12 @@ class ProcSQL(PrepData):
         for file_name in arch_files:
             print(f'proc file {file_name}')
             dfr = pd.read_parquet(file_name)
-            assert dfr.date.is_monotonic_increasing, 'Must be sorted by date'
             self.dataframe_to_db(dfr)
 
     def dataframe_to_db(self, dfr):
         """Prepare, cluster and insert active fire detections
         stored in Pandas DataFrame into the database
         """ 
-        assert dfr.date.is_monotonic_increasing, 'The date column is not ordered'
         chunks = -(-len(dfr.index) // self.chunk_size)
         dfrs = np.array_split(dfr, chunks, axis=0)
         for nr, chunk in enumerate(dfrs):
@@ -144,7 +144,7 @@ class ProcSQL(PrepData):
             # TODO move prepare outside this method. Needs to happen
             # before to the whole dfr
             chunk = self.prepare_detections_dataset(chunk)
-
+            assert chunk.date.is_monotonic_increasing, 'The date column is not ordered'
             end = time.time()
             print("The time of execution of prepare is :",
                   (end-start_g),"s")
@@ -160,7 +160,6 @@ class ProcSQL(PrepData):
             start = time.time()
             self.consistency_check(chunk)
             chunk = pd.concat([active, chunk])
-            self.consistency_check(chunk)
             # drop duplicates
             chunk = chunk.drop_duplicates(subset=['longitude',
                                                   'latitude',
@@ -209,11 +208,10 @@ class ProcSQL(PrepData):
                   (end-start), "s")
             print("TOTAL time is :",
                   (end-start_g),"s")
-
         pass
     
     def get_nrt(self):
-        base_url = self.config().get(self.sensor, 'base_url')
+        base_url = self.config.get(self.sensor, 'base_url')
         fetcher = FetchNRT(self.sensor, self.nrt_token, base_url)
         start_date = pd.Timestamp(self.last_date(), tz='utc')
         end_date = pd.Timestamp.utcnow()

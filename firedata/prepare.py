@@ -158,28 +158,24 @@ def read_hdf4(dataset_path, dataset=None):
             selection = product.select(dataset).get()
             return selection
         return product
-    except IOError as exc:
-        print('Could not read dataset {0}'.format(file_name))
+    except OSError as exc:
+        print(f'Could not read dataset {file_name} {exc}')
         raise
 
 class PrepData(Config):
+    config = Config.config()
 
     def __init__(self, sensor):
         self.date_now = pd.Timestamp.utcnow()
-        self.data_path = self.config['OS']['data_path']
-        self.lulc_path = self.config['OS']['lulc_data_path']
-        self.admin_path = self.config['OS']['admin_data_path']
 
     def columns_dtypes(self, dataset, dtypes_dict_key):
         """Selects required columns and sets data types as per
         dtype dictionary.
         """
-        sql_dtypes = self.sql_datatypes[dtypes_dict_key]
+        sql_dtypes = sql_datatypes[dtypes_dict_key]
         dataset = dataset[sql_dtypes.keys()]
         dataset = dataset.astype(sql_dtypes)
         return dataset
-
-
 
     def prepare_detections_dataset(self, dataset):
         """Convenience method combining several processes into one.
@@ -206,6 +202,8 @@ class PrepData(Config):
         dataset = self.modis_lulc(dataset)
         # datetime to unix time
         dataset['date'] = FireDate.unix_time(dataset['date'])
+        # sort by date
+        dataset = dataset.sort_values(by='date').reset_index(drop=True)
         return dataset
 
     def prepare_event_dataset(self, dataset):
@@ -262,6 +260,7 @@ class PrepData(Config):
 
     def modis_lulc(self, dataset):
         """Add land cover from MODIS MCD12Q1 product""" 
+        lulc_data_path = self.config.get('OS', 'lulc_data_path')
         tile_h, tile_v, indx, indy = ModisGrid.modis_sinusoidal_coords(dataset.longitude,
                 dataset.latitude)
         # Create a dataframe with grid indices
@@ -276,7 +275,7 @@ class PrepData(Config):
         for name, gr in grouped:
             tile_h = name[0]
             tile_v = name[1]
-            lulc_fname = os.path.join(self.lulc_path,
+            lulc_fname = os.path.join(lulc_data_path,
                 f'MCD12Q1.A{lulc_year}001.h{tile_h:02}v{tile_v:02}*')
             try:
                 lulc_fname = glob.glob(lulc_fname)[0]
@@ -294,7 +293,8 @@ class PrepData(Config):
     def modis_lulc_year(self, dataset):
         """Returns the closest year in available MCD12Q1 product to
         mode year of the fire detections dataset"""
-        file_names = glob.glob(os.path.join(self.lulc_path, '*.hdf'))
+        lulc_data_path = os.path.join(self.config.get('OS', 'lulc_data_path'))
+        file_names = glob.glob(lulc_data_path + '/*.hdf')
         years = [int(x.split('.A')[1][:4]) for x in file_names]
         years_unique = np.unique(years)
         dataset_year = dataset['date'].dt.year.value_counts().index[0]
@@ -306,7 +306,7 @@ class PrepData(Config):
         """
         Supplementary country information added to the dataset
         """
-        admin_file_path = os.path.join(self.admin_path,
+        admin_file_path = os.path.join(self.config.get('OS', 'admin_data_path'),
                 'gpw_v4_national_identifier_grid_rev11_30_sec.tif')
         dfr[['longitude', 'latitude']].to_csv('input.csv', sep = ' ', index = False, header = False)
         os.system(r'gdallocationinfo -valonly -wgs84 "%s" <%s >%s' % (admin_file_path,
@@ -315,7 +315,7 @@ class PrepData(Config):
         return admin.astype(int)
 
     def get_continent(self, dfr):
-        continents_path = os.path.join(self.admin_path,
+        continents_path = os.path.join(self.config.get('OS', 'admin_data_path'),
             'countries_continents.parquet')
         cids = pd.read_parquet(continents_path)
         cids = cids.rename({'Value': 'admin', 'Continent_Name': 'continent'}, axis = 1)
