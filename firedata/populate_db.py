@@ -1,37 +1,50 @@
 """
-The file contains script to populate 
+The file contains methods to populate 
 fire database from fire detections archive and nrt datasets.
 tadasnik tadas.nik@gmail.com
 """
 import os
 import glob
 import time
+
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder
-from database import DataBase
-from prepare import PrepData
-from fetch import FetchNRT
-from cluster.split_dbscan import SplitDBSCAN
-from _utils import ModisGrid
 
-class ProcSQL(PrepData):
+from firedata import fetch
+from firedata import database
+from firedata import prepare
+from firedata import _utils
+from cluster import split_dbscan
+
+class ProcSQL(prepare.PrepData):
     def __init__(self, sensor):
         self.eps = self.config.getint('CLUSTER', 'eps')
         self.min_samples = self.config.getint('CLUSTER', 'min_samples')
         self.chunk_size = self.config.getint('CLUSTER', 'chunk_size')
         self.sensor = sensor
-        self.db = DataBase(f'{sensor}')
+        self.db = database.DataBase(f'{sensor}')
+    
+    def get_nrt(self):
+        """Fetches near-real time active fire data from FIRMS. The data
+        is fetched for each day (inclusive) between the last day of 
+        data stored in the database and current day."""
+        base_url = self.config.get(self.sensor, 'base_url')
+        fetcher = fetch.FetchNRT(self.sensor, self.nrt_token, base_url)
+        start_date = pd.Timestamp(self.last_date(), tz='utc')
+        end_date = pd.Timestamp.utcnow()
+        dfr = fetcher.fetch(start_date, end_date)
+        return dfr
 
     def cluster_dataframe(self, dfr):
         """Convenience method to cluster dataset passed as pandas DataFrame (dfr).
         Must contain longitude, latitude and date columns. Date is assumed to
         be unixepoch.
         """
-        indx, indy = ModisGrid.modis_sinusoidal_grid_index(dfr.longitude, dfr.latitude)
+        indx, indy = _utils.ModisGrid.modis_sinusoidal_grid_index(dfr.longitude,
+                                                                  dfr.latitude)
         day_since = (dfr.date / 86400).astype(int)
         ars = np.column_stack([day_since, indx, indy])
-        cl = SplitDBSCAN(eps=self.eps, min_samples=self.min_samples)
+        cl = split_dbscan.SplitDBSCAN(eps=self.eps, min_samples=self.min_samples)
         cl.fit(ars)
         active_mask = cl.split(ars)
         return cl.labels_.astype(int), active_mask
@@ -135,22 +148,13 @@ class ProcSQL(PrepData):
         """Prepare, cluster and insert active fire detections
         stored in Pandas DataFrame into the database
         """ 
+        start_g = time.time()
         chunks = -(-len(dfr.index) // self.chunk_size)
         dfrs = np.array_split(dfr, chunks, axis=0)
         for nr, chunk in enumerate(dfrs):
             print(f'doing chunk {nr}', chunk.shape) 
-
-            start_g = time.time()
-            # TODO move prepare outside this method. Needs to happen
-            # before to the whole dfr
-            chunk = self.prepare_detections_dataset(chunk)
-            assert chunk.date.is_monotonic_increasing, 'The date column is not ordered'
-            end = time.time()
-            print("The time of execution of prepare is :",
-                  (end-start_g),"s")
-
-            start = time.time()
             # get active events
+            start = time.time()
             active = self.active_detections()
             end = time.time()
             print("The time of execution of get active is :",
@@ -208,24 +212,3 @@ class ProcSQL(PrepData):
                   (end-start), "s")
             print("TOTAL time is :",
                   (end-start_g),"s")
-        pass
-    
-    def get_nrt(self):
-        base_url = self.config.get(self.sensor, 'base_url')
-        fetcher = FetchNRT(self.sensor, self.nrt_token, base_url)
-        start_date = pd.Timestamp(self.last_date(), tz='utc')
-        end_date = pd.Timestamp.utcnow()
-        dfr = fetcher.fetch(start_date, end_date)
-        return dfr
-
-
-if __name__ == "__main__":
-    pc = ProcSQL('VIIRS_NPP')
-    nrt = pc.get_nrt()
-    pc.dataframe_to_db(nrt)
-# sql_strings = [x[1] for x in Config.config().items('SQL')]
-# pc.db.spin_up_fire_database(sql_strings)
-# pc.populate_archive()
-# dfr = pd.read_parquet('firedata/data/VIIRS_NPP/fire_archive_SV-C2_2022.parquet')
-# pc.dataframe_to_db(dfr)
-

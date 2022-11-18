@@ -107,5 +107,3 @@ class FetchNRT():
         else:
             self.logger.warning(f'No new data fetched, nothing to add to the record.')
         return nrt_new
-
-

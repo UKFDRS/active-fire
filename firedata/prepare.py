@@ -159,7 +159,7 @@ def read_hdf4(dataset_path, dataset=None):
             return selection
         return product
     except OSError as exc:
-        print(f'Could not read dataset {file_name} {exc}')
+        print(f'Could not read dataset {dataset_path} {exc}')
         raise
 
 class PrepData(Config):
@@ -178,10 +178,10 @@ class PrepData(Config):
         return dataset
 
     def prepare_detections_dataset(self, dataset):
-        """Convenience method combining several processes into one.
+        """Convenience method combining several processes into one call.
         Adds missing columns and additional information to 
         the detections dataset. Sets data types and returns the required
-        columns only. Works both with archive and nrt
+        columns only. Works (or at least should) both with archive and nrt
         datasets. TODO a lot going on here, perhaps split.
         """
         # If no date column add one
@@ -228,8 +228,7 @@ class PrepData(Config):
         dfg['name'] = None
         return dfg
 
-    @classmethod
-    def filter_non_vegetation_events(cls, dfr):
+    def filter_non_vegetation_events(self, dfr):
         """
         Drop fire events which are primarily non_vegetation detections,
         (water and urban) and also unclassified
@@ -241,7 +240,7 @@ class PrepData(Config):
             urban_rat = lc_count[13] / (lc_count.sum(axis=1))
             urban_rat = urban_rat.reset_index(name='urban_ratio')
             dfr = dfr.merge(urban_rat, on='event')
-            dfr = dfr[dfr.urban_ratio < 0.3]
+            dfr = dfr[dfr.urban_ratio < 0.5]
             dfr = dfr.drop('urban_ratio', axis=1)
         # drop water events and unclassified (> 50% water detections)
         if 0 in lc_count:
@@ -300,7 +299,6 @@ class PrepData(Config):
         dataset_year = dataset['date'].dt.year.value_counts().index[0]
         lulc_year = years_unique[np.argmin((years_unique - dataset_year))]
         return lulc_year
-
 
     def country_code(self, dfr):
         """
