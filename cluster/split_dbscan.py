@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.cluster import DBSCAN
-from firedata._utils import ModisGrid, FireDate
+
 
 class SplitDBSCAN(DBSCAN):
     def __init__(
@@ -12,13 +12,13 @@ class SplitDBSCAN(DBSCAN):
         metric="euclidean",
     ):
         super().__init__(
-                eps=eps,
-                min_samples=min_samples,
-                metric=metric,
-                )
+            eps=eps,
+            min_samples=min_samples,
+            metric=metric,
+        )
         self.eps = eps
         self.edge_eps = edge_eps
-        self.split_dim = split_dim,
+        self.split_dim = (split_dim,)
 
     def split(self, X):
         """Splits clusters into completed and active parts.
@@ -34,7 +34,7 @@ class SplitDBSCAN(DBSCAN):
             active_mask : (bool) a mask with True values indicating
             self.labels_ of active clusters.
         """
-        # chunk_edge represents max value in chunk along the 
+        # chunk_edge represents max value in chunk along the
         # split_dimension
         chunk_edge = X[:, self.split_dim].max()
         # whithin reach is a mask of samples which are within edge_eps
