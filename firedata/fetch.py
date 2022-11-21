@@ -7,7 +7,6 @@ the token.
 author: tadas.nik@gmail.com
 
 """
-import os
 import logging
 import requests
 import pandas as pd
@@ -23,7 +22,7 @@ class NRTAuth(AuthBase):
     """Implementation of authorization using the LANCE (eosdis)
     nrt (near-real time) data access token.
     This is called during http request setup"""
-    def __init__(self, token):
+    def __init__(self, token: str):
         self.token = token
 
     def __call__(self, r):
@@ -33,7 +32,7 @@ class NRTAuth(AuthBase):
 
 class FetchNRT():
     """Class for fetching active fires near-real time (nrt) data from FIRMS"""
-    def __init__(self, sensor, nrt_token, base_url):
+    def __init__(self, sensor: str, nrt_token: str, base_url: str):
         self.sensor = sensor
         self.auth = NRTAuth(nrt_token)
         self.base_url = base_url
@@ -52,21 +51,13 @@ class FetchNRT():
         logger.addHandler(log_handler)
         return logger
 
-    @classmethod
-    def nrt_end_date_log(cls):
-        """TODO Not used"""
-        with open(cls.__class__.__name__) as logfile:
-            lines = logfile.read().splitlines()
-            last_line = lines[-1]
-        return pd.Timestamp(last_line.split('NRT last datetime')[1])
-
-    def day_url(self, date):
+    def day_url(self, date: pd.Timestamp):
         """active fire data url for the date"""
         year = date.year
         doy = date.day_of_year
         return self.base_url + f'{year}{doy:03d}.txt'
 
-    def fetch_day_nrt(self, date):
+    def fetch_day_nrt(self, date: pd.Timestamp):
         """Retrieves nrt active fire data for the day (date) from FIRMS
         Args:
             date: Pandas Timestamp.
@@ -83,8 +74,7 @@ class FetchNRT():
                              date.strftime('%Y-%m-%d'))
         except requests.exceptions.HTTPError as err:
             dfr = None
-            self.logger.warning('fetching error: ' +
-                             str(err))
+            self.logger.warning('fetching error: ' + str(err))
         return dfr
 
     def fetch(self, start_date, end_date):
