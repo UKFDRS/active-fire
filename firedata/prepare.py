@@ -6,137 +6,13 @@ from pyhdf import SD
 from configuration import Config
 from firedata._utils import dataset_dtypes, sql_datatypes, ModisGrid, FireDate
 
-def clean_viirs(dfr):
-    """
-    Drop fire events which are primarily stationary detections,
-    water ant urban
-    """
-    lc_count = dfr.groupby(['event'])['lc'].value_counts().unstack(fill_value=0)
-    # drop detections which are classed as static
-    print(dfr.shape)
-    dfr = dfr[dfr.type != 2]
-    print(dfr.shape)
-    # drop urban events (> 50% urban detections)
-    urban_rat = (lc_count[20] + lc_count[21]) / (lc_count.sum(axis=1))
-    try:
-        dfr = dfr.drop('urban_ratio', axis=1)
-    except:
-        pass
-    urban_rat = urban_rat.reset_index(name='urban_ratio')
-    dfr = dfr.merge(urban_rat, on='event')
-    dfr = dfr[dfr.urban_ratio < 0.5]
-    print(dfr.shape)
-    # drop water events (> 90% water detections)
-    type_count = dfr.groupby(['event'])['type'].value_counts().unstack(fill_value=0)
-    water_rat = type_count[3] / (lc_count.sum(axis=1))
-    try:
-        dfr = dfr.drop('water_ratio', axis=1)
-    except:
-        pass
-    water_rat = water_rat.reset_index(name='water_ratio')
-    dfr = dfr.merge(water_rat, on='event')
-    dfr = dfr[dfr.water_ratio < 0.9]
-    print(dfr.shape)
-    # Filter out Fife NGL plant area
-    bbox = [56.11, -33.3, 56.08, -3.28]
-    fife = spatial_subset_dfr(dfr, bbox)
-    dfr = dfr[~dfr.isin(fife)].dropna()
-    print(dfr.shape)
-    return dfr
-
-def travel_time(dfr):
-    """
-    Travel time to city/town added to the ba dataset (dfr).
-    The dataset:
-    D.J. Weiss, A. Nelson, H.S. Gibson, W. Temperley, S. Peedell, A. Lieber,
-    M. Hancher, E. Poyart, S. Belchior, N. Fullman, B. Mappin, U. Dalrymple,
-    J. Rozier, T.C.D. Lucas, R.E. Howes, L.S. Tusting, S.Y. Kang, E. Cameron,
-    D. Bisanzio, K.E. Battle, S. Bhatt, and P.W. Gething. A global map of
-    travel time to cities to assess inequalities in accessibility in 2015.
-    (2018). Nature. doi:10.1038/nature25181.
-    """
-    dfr[['longitude', 'latitude']].to_csv('input.csv', sep = ' ', index = False, header = False)
-    os.system(r'gdallocationinfo -valonly -wgs84 "%s" <%s >%s' % ('data/2015_accessibility_to_cities_v1.0.tif',
-                                                                      'input.csv','output.csv'))
-    dfr['time2city'] = np.loadtxt('output.csv')
-    dfr = dfr.fillna(-999)
-    dfr['time2city'] = dfr['time2city'].astype(int)
-    return dfr
-
-
-def pop_dens(dfr):
-    dfr['pop_den'] = 0
-    years = [2000, 2005, 2010, 2015, 2020]
-    for year in dfr.year.unique():
-        print(year)
-        file_year = min(years, key=lambda x:abs(x-year))
-        print(file_year)
-        dfr.loc[dfr.year==year, ['longitude', 'latitude']].to_csv('input.csv', sep = ' ', index = False, header = False)
-        if file_year == 2000:
-            os.system(r'gdallocationinfo -valonly -wgs84 "%s" <%s >%s' % ('data/gpw_v4_population_density_rev11_2000_2pt5_min.tif',
-                                                                      'input.csv','output.csv'))
-        if file_year == 2005 :
-            os.system(r'gdallocationinfo -valonly -wgs84 "%s" <%s >%s' % ('data/gpw_v4_population_density_rev11_2005_2pt5_min.tif',
-                                                                      'input.csv','output.csv'))
-        if file_year == 2010 :
-            os.system(r'gdallocationinfo -valonly -wgs84 "%s" <%s >%s' % ('data/gpw_v4_population_density_rev11_2010_2pt5_min.tif',
-                                                                      'input.csv','output.csv'))
-        if file_year == 2015 :
-            os.system(r'gdallocationinfo -valonly -wgs84 "%s" <%s >%s' % ('data/gpw_v4_population_density_rev11_2015_2pt5_min.tif',
-                                                                      'input.csv','output.csv'))
-        if file_year == 2020 :
-            os.system(r'gdallocationinfo -valonly -wgs84 "%s" <%s >%s' % ('data/gpw_v4_population_density_rev11_2020_2pt5_min.tif',
-                                                                      'input.csv','output.csv'))
-        print(len(np.loadtxt('output.csv')))
-        print(dfr[dfr.year==year].shape)
-        dfr.loc[dfr.year==year, 'pop_den'] = np.loadtxt('output.csv')
-    return dfr
-
 def group_mode(dfr, group_cols, value_col, count_col):
     return dfr.groupby(group_cols + [value_col]).size() \
         .to_frame(count_col).reset_index() \
         .sort_values(count_col, ascending = False) \
         .drop_duplicates(subset = group_cols)
 
-def clean_nrt(dfr):
-    """
-    Drop fire events which are primarily stationary detections,
-    water ant urban
-    """
-    lc_count = dfr.groupby(['event'])['lc'].value_counts().unstack(fill_value=0)
-    # drop detections which are classed as static
-    print(dfr.shape)
-    dfr = dfr[dfr.type != 2]
-    print(dfr.shape)
-    # drop urban events (> 50% urban detections)
-    urban_rat = (lc_count[20] + lc_count[21]) / (lc_count.sum(axis=1))
-    try:
-        dfr = dfr.drop('urban_ratio', axis=1)
-    except:
-        pass
-    urban_rat = urban_rat.reset_index(name='urban_ratio')
-    dfr = dfr.merge(urban_rat, on='event')
-    dfr = dfr[dfr.urban_ratio < 0.5]
-    print(dfr.shape)
-    # drop water events (> 90% water detections)
-    type_count = dfr.groupby(['event'])['type'].value_counts().unstack(fill_value=0)
-    water_rat = lc_count[0] / (lc_count.sum(axis=1))
-    try:
-        dfr = dfr.drop('water_ratio', axis=1)
-    except:
-        pass
-    water_rat = water_rat.reset_index(name='water_ratio')
-    dfr = dfr.merge(water_rat, on='event')
-    dfr = dfr[dfr.water_ratio < 0.9]
-    print(dfr.shape)
-    # Filter out Fife NGL plant area
-    bbox = [56.11, -33.3, 56.08, -3.28]
-    fife = spatial_subset_dfr(dfr, bbox)
-    dfr = dfr[~dfr.isin(fife)].dropna()
-    print(dfr.shape)
-    return dfr
-
-def read_hdf4(dataset_path, dataset=None):
+def read_hdf4(dataset_path: str, dataset=None):
     """
     Reads Scientific Data Set(s) stored in a HDF-EOS (HDF4) file
     defined by the file_name argument. Returns SDS(s) given
@@ -163,9 +39,8 @@ def read_hdf4(dataset_path, dataset=None):
         raise
 
 class PrepData(Config):
-    config = Config.config()
 
-    def __init__(self, sensor):
+    def __init__(self, sensor: str):
         self.date_now = pd.Timestamp.utcnow()
 
     def columns_dtypes(self, dataset, dtypes_dict_key):
