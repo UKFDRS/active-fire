@@ -1,9 +1,12 @@
 import os
 import glob
+import pathlib
+
 import numpy as np
 import pandas as pd
 from pyhdf import SD
-from configuration import Config
+
+import config 
 from firedata._utils import dataset_dtypes, sql_datatypes, ModisGrid, FireDate
 
 def group_mode(dfr, group_cols, value_col, count_col):
@@ -38,9 +41,11 @@ def read_hdf4(dataset_path: str, dataset=None):
         print(f'Could not read dataset {dataset_path} {exc}')
         raise
 
-class PrepData(Config):
+class PrepData():
 
     def __init__(self, sensor: str):
+        self.sensor = sensor
+        self.config = config.config_dict
         self.date_now = pd.Timestamp.utcnow()
 
     def columns_dtypes(self, dataset, dtypes_dict_key):
@@ -134,7 +139,7 @@ class PrepData(Config):
 
     def modis_lulc(self, dataset):
         """Add land cover from MODIS MCD12Q1 product""" 
-        lulc_data_path = self.config.get('OS', 'lulc_data_path')
+        lulc_data_path = self.config['OS']['lulc_data_path']
         tile_h, tile_v, indx, indy = ModisGrid.modis_sinusoidal_coords(dataset.longitude,
                 dataset.latitude)
         # Create a dataframe with grid indices
@@ -149,10 +154,10 @@ class PrepData(Config):
         for name, gr in grouped:
             tile_h = name[0]
             tile_v = name[1]
-            lulc_fname = os.path.join(lulc_data_path,
+            lulc_fname = pathlib.Path(lulc_data_path,
                 f'MCD12Q1.A{lulc_year}001.h{tile_h:02}v{tile_v:02}*')
             try:
-                lulc_fname = glob.glob(lulc_fname)[0]
+                lulc_fname = glob.glob(str(lulc_fname))[0]
                 dslc = read_hdf4(lulc_fname)
                 gr['lc'] = dslc.select('LC_Type1').get()[gr['indy'], gr['indx']]
             except IndexError:
@@ -167,8 +172,8 @@ class PrepData(Config):
     def modis_lulc_year(self, dataset):
         """Returns the closest year in available MCD12Q1 product to
         mode year of the fire detections dataset"""
-        lulc_data_path = os.path.join(self.config.get('OS', 'lulc_data_path'))
-        file_names = glob.glob(lulc_data_path + '/*.hdf')
+        lulc_data_path = pathlib.Path(self.config['OS']['lulc_data_path'], '/*.hdf')
+        file_names = glob.glob(str(lulc_data_path))
         years = [int(x.split('.A')[1][:4]) for x in file_names]
         years_unique = np.unique(years)
         dataset_year = dataset['date'].dt.year.value_counts().index[0]
@@ -179,16 +184,16 @@ class PrepData(Config):
         """
         Supplementary country information added to the dataset
         """
-        admin_file_path = os.path.join(self.config.get('OS', 'admin_data_path'),
-                'gpw_v4_national_identifier_grid_rev11_30_sec.tif')
+        file_path = pathlib.Path(self.config['OS']['admin_data_path'],
+                                 'gpw_v4_national_identifier_grid_rev11_30_sec.tif')
         dfr[['longitude', 'latitude']].to_csv('input.csv', sep = ' ', index = False, header = False)
-        os.system(r'gdallocationinfo -valonly -wgs84 "%s" <%s >%s' % (admin_file_path,
+        os.system(r'gdallocationinfo -valonly -wgs84 "%s" <%s >%s' % (file_path,
                                                                           'input.csv','output.csv'))
         admin = np.loadtxt('output.csv')
         return admin.astype(int)
 
     def get_continent(self, dfr):
-        continents_path = os.path.join(self.config.get('OS', 'admin_data_path'),
+        continents_path = pathlib.Path(self.config['OS']['admin_data_path'],
             'countries_continents.parquet')
         cids = pd.read_parquet(continents_path)
         cids = cids.rename({'Value': 'admin', 'Continent_Name': 'continent'}, axis = 1)

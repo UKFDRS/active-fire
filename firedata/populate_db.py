@@ -10,6 +10,7 @@ import time
 import numpy as np
 import pandas as pd
 
+import config
 from firedata import fetch
 from firedata import database
 from firedata import prepare
@@ -19,18 +20,19 @@ from cluster import split_dbscan
 
 class ProcSQL(prepare.PrepData):
     def __init__(self, sensor: str):
-        self.eps = self.config.getint("CLUSTER", "eps")
-        self.min_samples = self.config.getint("CLUSTER", "min_samples")
-        self.chunk_size = self.config.getint("CLUSTER", "chunk_size")
+        self.config = config.config_dict
+        self.eps = self.config["CLUSTER"]["eps"]
+        self.min_samples = self.config["CLUSTER"]["min_samples"]
+        self.chunk_size = self.config["CLUSTER"]["chunk_size"]
         self.sensor = sensor
-        self.db = database.DataBase(f"{sensor}")
+        self.db = database.DataBase(sensor)
 
     def get_nrt(self):
         """Fetches near-real time active fire data from FIRMS. The data
         is fetched for each day (inclusive) between the last day of
         data stored in the database and current day."""
         base_url = self.config.get(self.sensor, "base_url")
-        fetcher = fetch.FetchNRT(self.sensor, self.nrt_token, base_url)
+        fetcher = fetch.FetchNRT(self.sensor, self.config["nrt_token"], base_url)
         start_date = pd.Timestamp(self.last_date(), tz="utc")
         end_date = pd.Timestamp.utcnow()
         dfr = fetcher.fetch(start_date, end_date)
@@ -107,7 +109,7 @@ class ProcSQL(prepare.PrepData):
         sql_string = "DROP TABLE detections_active"
         self.db.execute_sql(sql_string)
         print("deleting done")
-        create_active = self.config.get(section="SQL", option="sql_create_active_table")
+        create_active = self.config["SQL"]["sql_create_active_table"]
         self.db.execute_sql(create_active)
 
     def incement_index(self, dataset):
@@ -134,7 +136,9 @@ class ProcSQL(prepare.PrepData):
 
     def populate_archive(self):
         """Populate database with active fire archive"""
-        archive_dir = os.path.join(self.data_path, self.sensor, "fire_archive*.parquet")
+        archive_dir = os.path.join(
+            self.config["data_path"], self.sensor, "fire_archive*.parquet"
+        )
         arch_files = glob.glob(archive_dir)
         arch_files.sort()
         print(arch_files)
@@ -143,7 +147,7 @@ class ProcSQL(prepare.PrepData):
             dfr = pd.read_parquet(file_name)
             self.dataframe_to_db(dfr)
 
-    def dataframe_to_db(self, dfr):
+    def dataframe_to_db(self, dfr: pd.DataFrame):
         """Prepare, cluster and insert active fire detections
         stored in Pandas DataFrame into the database
         """
@@ -174,7 +178,7 @@ class ProcSQL(prepare.PrepData):
             chunk["active"] = active_flag.astype(int)
             end = time.time()
             print(
-                "The time of execution of processing/clustering is :",
+                "The time of clustering is :",
                 (end - start),
                 "s",
             )
