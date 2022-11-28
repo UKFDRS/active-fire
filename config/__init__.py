@@ -5,7 +5,7 @@ import tomli
 import dotenv
 
 base_dir = pathlib.Path(__file__).parent.parent
-nrt_token = dotenv.dotenv_values()
+nrt_token = dotenv.dotenv_values()['nrt_token']
 
 path = pathlib.Path(__file__).parent / "configuration.toml"
 with path.open(mode="rb") as fp:

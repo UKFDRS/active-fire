@@ -2,14 +2,14 @@ import os
 import sqlite3
 import pandas as pd
 from sqlite3 import Error
+import config
 from firedata._utils import sql_datatypes
-from configuration import Config
 
 
 class DataBase(object):
     def __init__(self, name):
         self.name = name
-        data_path = Config.config().get(section="OS", option="data_path")
+        data_path = config.config_dict["OS"]["data_path"]
         self.__db_file = os.path.join(data_path, name + ".db")
 
     def create_connection(self):
@@ -54,8 +54,10 @@ class DataBase(object):
             dataset = pd.read_sql_query(sql_string, conn)
             return dataset
 
-    def insert_records(self, table, records, columns):
-        """Insert records into the database"""
+    def insert_dataset(self, dataset: pd.DataFrame, table: str, columns: list[str]):
+        """Insert dataset into the table in the database"""
+        dataset = dataset[list(columns)]
+        records = dataset.values.tolist()
         qmks = ", ".join(["?"] * len(columns))
         sql = f"""INSERT INTO {table} VALUES ({qmks})"""
         with self.create_connection() as conn:
@@ -63,17 +65,17 @@ class DataBase(object):
             cur.executemany(sql, records)
             conn.commit()
 
-    def insert_extinct(self, records):
+    def insert_extinct(self, dataset):
         columns = sql_datatypes["SQL_detections_dtypes"].keys()
-        self.insert_records("detections_extinct", records, columns)
+        self.insert_dataset(dataset, "detections_extinct", columns)
 
-    def insert_active(self, records):
+    def insert_active(self, dataset):
         columns = sql_datatypes["SQL_detections_dtypes"].keys()
-        self.insert_records("detections_active", records, columns)
+        self.insert_dataset(dataset, "detections_active", columns)
 
-    def insert_events(self, records):
+    def insert_events(self, dataset):
         columns = sql_datatypes["SQL_events_dtypes"].keys()
-        self.insert_records("events", records, columns)
+        self.insert_dataset(dataset, "events", columns)
 
     def spin_up_fire_database(self, sql_list):
         """Convenience methot to create database and create the tables
