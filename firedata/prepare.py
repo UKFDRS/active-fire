@@ -134,6 +134,15 @@ class PrepData:
             dfr = dfr.merge(urban_rat, on="event")
             dfr = dfr[dfr.urban_ratio < 0.5]
             dfr = dfr.drop("urban_ratio", axis=1)
+        if any(x in [15, 16, 17] for x in lc_count):
+            barren_rat = (
+                lc_count[15] + lc_count[16] + lc_count[17] / (lc_count.sum(axis=1))
+            )
+            barren_rat = barren_rat.reset_index(name="barren_ratio")
+            dfr = dfr.merge(barren_rat, on="event")
+            dfr = dfr[dfr.barren_ratio < 0.5]
+            dfr = dfr.drop("barren_ratio", axis=1)
+
         # drop water events and unclassified (> 50% water detections)
         if 0 in lc_count:
             water_rat = lc_count[0] / (lc_count.sum(axis=1))
