@@ -14,7 +14,7 @@ SELECT * FROM (
                partition by continent order by tot_size desc
                ) as continent_count
     from events WHERE active = 1) ranks
-where continent_count <= 5;
+where continent_count <= 50;
 """
 dfr = pc.db.return_many_values(sql_str)
 # dfr = pc.active_detections()
