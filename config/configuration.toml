@@ -72,7 +72,8 @@ sql_create_events_table = """
         last_date  integer NOT NULL,
         latitude   real NOT NULL,
         longitude  real NOT NULL,
-        admin     integer,
+        admin      integer,
+        lc         integer,
         continent  text,
         name       text
         );

@@ -10,7 +10,7 @@ import config
 from firedata._utils import dataset_dtypes, sql_datatypes, ModisGrid, FireDate
 
 
-def group_mode(dfr, group_cols, value_col, count_col):
+def group_mode(dfr: pd.DataFrame, group_cols: list[str], value_col: str, count_col):
     return (
         dfr.groupby(group_cols + [value_col])
         .size()
@@ -97,10 +97,10 @@ class PrepData:
         dataset = self.columns_dtypes(dataset, "SQL_detections_dtypes")
         return dataset
 
-    def prepare_event_dataset(self, dataset):
+    def prepare_event_dataset(self, dataset: pd.DataFrame) -> pd.DataFrame:
         """Generate per event dataset."""
         dfg = dataset.groupby("event")
-        # lc = group_mode(dataset, ['event'], 'lc', 'glc')
+        lc = group_mode(dataset, ["event"], "lc", "glc")
         cn = group_mode(dataset, ["event"], "admin", "gadmin")
         dfg = dfg.agg(
             tot_size=("type", "count"),
@@ -112,6 +112,7 @@ class PrepData:
         ).reset_index()
         # dfg = pd.merge(dfg, lc[['event', 'lc']], on = 'event', how = 'left')
         dfg = pd.merge(dfg, cn[["event", "admin"]], on="event", how="left")
+        dfg = pd.merge(dfg, lc[["event", "lc"]], on="event", how="left")
         dfg = self.get_continent(dfg)
         # dfg['duration'] = dfg.last_date - dfg.start_date
         max_size = dataset.groupby(["event", "date"])["type"].count()

@@ -16,5 +16,5 @@ SELECT * FROM (
     from events WHERE active = 1) ranks
 where continent_count <= 50;
 """
-dfr = pc.db.return_many_values(sql_str)
-# dfr = pc.active_detections()
+# dfr = pc.db.return_many_values(sql_str)
+dfr = pd.read_parquet("firedata/data/active_detections.parquet")
