@@ -164,10 +164,6 @@ class ProcSQL(prepare.PrepData):
 
             # get active events
             active = self.active_detections()
-
-            # delete active detections from the database
-            self.delete_active()
-
             chunk = pd.concat([active, chunk])
             # drop duplicates
             chunk = chunk.drop_duplicates(subset=["longitude", "latitude", "date"])
@@ -179,7 +175,10 @@ class ProcSQL(prepare.PrepData):
             chunk["active"] = active_flag.astype(int)
 
             events_chunk = self.prepare_event_dataset(chunk)
-            self.db.insert_events(events_chunk)
 
+            # delete active detections from the database
+            self.delete_active()
+
+            self.db.insert_events(events_chunk)
             self.db.insert_active(chunk[chunk.active == 1])
             self.db.insert_extinct(chunk[chunk.active == 0])

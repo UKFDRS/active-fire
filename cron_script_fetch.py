@@ -1,7 +1,5 @@
-import pandas as pd
 from firedata import populate_db
 
-print("test")
 pc = populate_db.ProcSQL("VIIRS_NPP")
 nrt = pc.get_nrt()
 nrt = pc.prepare_detections_dataset(nrt)

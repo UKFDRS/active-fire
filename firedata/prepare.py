@@ -10,7 +10,9 @@ import config
 from firedata._utils import dataset_dtypes, sql_datatypes, ModisGrid, FireDate
 
 
-def group_mode(dfr: pd.DataFrame, group_cols: list[str], value_col: str, count_col):
+def group_mode(
+    dfr: pd.DataFrame, group_cols: list[str], value_col: str, count_col: str
+) -> pd.DataFrame:
     return (
         dfr.groupby(group_cols + [value_col])
         .size()
@@ -48,6 +50,40 @@ def read_hdf4(dataset_path: str, dataset=None):
         raise
 
 
+def add_admin(detections: pd.DataFrame, events: pd.DataFrame) -> pd.DataFrame:
+    """Add a column with country code to the events dataset"""
+    cn = group_mode(detections, ["event"], "admin", "gadmin")
+    events = pd.merge(events, cn[["event", "admin"]], on="event", how="left")
+    print(events.head)
+    return events
+
+
+def add_lc1(detections: pd.DataFrame, events: pd.DataFrame) -> pd.DataFrame:
+    """Add 'lc1' column with dominant (mode) land cover type for the event"""
+    lc = group_mode(detections, ["event"], "lc", "glc")
+    lc = lc.rename({"lc": "lc1"}, axis=1)
+    events = pd.merge(events, lc[["event", "lc1"]], on="event", how="left")
+    return events
+
+
+def add_vegetation_ratio(
+    detections: pd.DataFrame, events: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Determine proportion of vegetation fire detections
+    and add a column to the events dataset.
+    """
+    vegetation_lcs = list(range(1, 13))
+    vegetation_lcs.append(14)
+    lc_count = detections.groupby(["event"])["lc"].value_counts().unstack(fill_value=0)
+    veg_rat = lc_count.loc[:, lc_count.columns.isin(vegetation_lcs)].sum(
+        axis=1
+    ) / lc_count.sum(axis=1)
+    veg_rat = veg_rat.reset_index(name="veg_ratio")
+    events = pd.merge(events, veg_rat, on="event", how="left")
+    return events
+
+
 class PrepData:
     def __init__(self, sensor: str):
         self.sensor = sensor
@@ -61,7 +97,6 @@ class PrepData:
         sql_dtypes = sql_datatypes[dtypes_dict_key]
         dataset = dataset[sql_dtypes.keys()]
         dataset = dataset.astype(sql_dtypes)
-        print("dataset", dataset.columns)
         return dataset
 
     def prepare_detections_dataset(self, dataset):
@@ -100,8 +135,6 @@ class PrepData:
     def prepare_event_dataset(self, dataset: pd.DataFrame) -> pd.DataFrame:
         """Generate per event dataset."""
         dfg = dataset.groupby("event")
-        lc = group_mode(dataset, ["event"], "lc", "glc")
-        cn = group_mode(dataset, ["event"], "admin", "gadmin")
         dfg = dfg.agg(
             tot_size=("type", "count"),
             start_date=("date", "min"),
@@ -111,9 +144,10 @@ class PrepData:
             latitude=("latitude", "median"),
         ).reset_index()
         # dfg = pd.merge(dfg, lc[['event', 'lc']], on = 'event', how = 'left')
-        dfg = pd.merge(dfg, cn[["event", "admin"]], on="event", how="left")
-        dfg = pd.merge(dfg, lc[["event", "lc"]], on="event", how="left")
-        dfg = self.get_continent(dfg)
+        dfg = add_admin(dataset, dfg)
+        dfg = add_lc1(dataset, dfg)
+        dfg = add_vegetation_ratio(dataset, dfg)
+        dfg = self.add_continent(dfg)
         # dfg['duration'] = dfg.last_date - dfg.start_date
         max_size = dataset.groupby(["event", "date"])["type"].count()
         dfg["max_size"] = max_size.groupby(level=0).max().values
@@ -126,7 +160,10 @@ class PrepData:
         Drop fire events which are primarily non_vegetation detections,
         (water and urban) and also unclassified
         """
+        vegetation_lcs = list(range(1, 13))
+        vegetation_lcs.append(14)
         lc_count = dfr.groupby(["event"])["lc"].value_counts().unstack(fill_value=0)
+        veg_rat = lc_count[vegetation_lcs] / lc_count.sum(axis=1)
         # drop detections which are classed as static
         # drop urban events (> 50% urban detections)
         if 13 in lc_count:
@@ -136,9 +173,7 @@ class PrepData:
             dfr = dfr[dfr.urban_ratio < 0.5]
             dfr = dfr.drop("urban_ratio", axis=1)
         if any(x in [15, 16, 17] for x in lc_count):
-            barren_rat = (
-                lc_count[15] + lc_count[16] + lc_count[17] / (lc_count.sum(axis=1))
-            )
+            barren_rat = lc_count[[15, 16, 17]].sum(axis=1) / (lc_count.sum(axis=1))
             barren_rat = barren_rat.reset_index(name="barren_ratio")
             dfr = dfr.merge(barren_rat, on="event")
             dfr = dfr[dfr.barren_ratio < 0.5]
@@ -221,7 +256,8 @@ class PrepData:
         admin = np.loadtxt("output.csv")
         return admin.astype(int)
 
-    def get_continent(self, dfr):
+    def add_continent(self, dfr: pd.DataFrame):
+        """Add a column with event continent"""
         continents_path = pathlib.Path(
             self.config["OS"]["admin_data_path"], "countries_continents.parquet"
         )
@@ -230,7 +266,9 @@ class PrepData:
         cids = cids.loc[(cids.continent.notna()), :]
         cidsg = cids.groupby(["admin"])["continent"].first().reset_index()
         dfr = pd.merge(dfr, cidsg[["admin", "continent"]], on="admin", how="left")
+        # Russia east of 50deg longitude is considered Asia
         dfr.loc[((dfr.admin == 643) & (dfr.longitude > 50)), "continent"] = "Asia"
+        # Kazakhstan is considered Asia
         dfr.loc[(dfr.admin == 398), "continent"] = "Asia"
         dfr.loc[dfr.continent == -999, "continent"] = "None"
         return dfr

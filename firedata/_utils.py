@@ -3,141 +3,139 @@ import pandas as pd
 from pathlib import Path
 
 select_columns = {
-    'latitude': 'float32',
-    'longitude': 'float32',
-    'scan': 'float32',
-    'track': 'float32',
-    'satellite': object,
-    'confidence': 'int8',
-    'frp': 'float32',
-    'daynight': object,
-    'type': 'int8',
-    }
+    "latitude": "float32",
+    "longitude": "float32",
+    "scan": "float32",
+    "track": "float32",
+    "satellite": object,
+    "confidence": "int8",
+    "frp": "float32",
+    "daynight": object,
+    "type": "int8",
+}
 
 dataset_dtypes = {
-    'VIIRS_dtypes' : {
-        'latitude': 'float32',
-        'longitude': 'float32',
-        'bright_ti4': 'float32',
-        'bright_ti5': 'float32',
-        'acq_date': object,
-        'acq_time': object,
-        'scan': 'float32',
-        'track': 'float32',
-        'satellite': object,
-        'instrument': object,
-        'confidence': object,
-        'version': 'int8',
-        'frp': 'float32',
-        'daynight': object,
-        'type': 'int8',
-        },
-
-    'MODIS_dtypes' : {
-        'latitude': 'float32',
-        'longitude': 'float32',
-        'brightness': 'float32',
-        'acq_date': object,
-        'acq_time': object,
-        'scan': 'float32',
-        'track': 'float32',
-        'satellite': object,
-        'instrument': object,
-        'confidence': 'int8',
-        'version': 'float32',
-        'bright_t31': 'float32',
-        'frp': 'float32',
-        'daynight': object,
-        'type': 'int8',
-        },
-
-    'MODIS_nrt_dtypes' : {
-        'latitude': 'float32',
-        'longitude': 'float32',
-        'brightness': 'float32',
-        'acq_date': object,
-        'acq_time': object,
-        'scan': 'float32',
-        'track': 'float32',
-        'satellite': object,
-        'instrument': object,
-        'confidence': 'int8',
-        'version': object,
-        'bright_t31': 'float32',
-        'frp': 'float32',
-        'daynight': object,
-        },
-
-    'VIIRS_NOAA_nrt_dtypes' : {
-        'latitude': 'float32',
-        'longitude': 'float32',
-        'brightness': 'float32',
-        'acq_date': object,
-        'acq_time': object,
-        'scan': 'float32',
-        'track': 'float32',
-        'satellite': object,
-        'instrument': object,
-        'confidence': object,
-        'version': object,
-        'bright_t31': 'float32',
-        'frp': 'float32',
-        'daynight': object,
-        },
-
-
-    'VIIRS_nrt_dtypes' : {
-        'latitude': 'float32',
-        'longitude': 'float32',
-        'bright_ti4': 'float32',
-        'acq_date': object,
-        'acq_time': object,
-        'scan': 'float32',
-        'track': 'float32',
-        'satellite': object,
-        'instrument': object,
-        'confidence': object,
-        'version': object,
-        'bright_ti5': 'float32',
-        'frp': 'float32',
-        'daynight': object,
-        }
-    }
+    "VIIRS_dtypes": {
+        "latitude": "float32",
+        "longitude": "float32",
+        "bright_ti4": "float32",
+        "bright_ti5": "float32",
+        "acq_date": object,
+        "acq_time": object,
+        "scan": "float32",
+        "track": "float32",
+        "satellite": object,
+        "instrument": object,
+        "confidence": object,
+        "version": "int8",
+        "frp": "float32",
+        "daynight": object,
+        "type": "int8",
+    },
+    "MODIS_dtypes": {
+        "latitude": "float32",
+        "longitude": "float32",
+        "brightness": "float32",
+        "acq_date": object,
+        "acq_time": object,
+        "scan": "float32",
+        "track": "float32",
+        "satellite": object,
+        "instrument": object,
+        "confidence": "int8",
+        "version": "float32",
+        "bright_t31": "float32",
+        "frp": "float32",
+        "daynight": object,
+        "type": "int8",
+    },
+    "MODIS_nrt_dtypes": {
+        "latitude": "float32",
+        "longitude": "float32",
+        "brightness": "float32",
+        "acq_date": object,
+        "acq_time": object,
+        "scan": "float32",
+        "track": "float32",
+        "satellite": object,
+        "instrument": object,
+        "confidence": "int8",
+        "version": object,
+        "bright_t31": "float32",
+        "frp": "float32",
+        "daynight": object,
+    },
+    "VIIRS_NOAA_nrt_dtypes": {
+        "latitude": "float32",
+        "longitude": "float32",
+        "brightness": "float32",
+        "acq_date": object,
+        "acq_time": object,
+        "scan": "float32",
+        "track": "float32",
+        "satellite": object,
+        "instrument": object,
+        "confidence": object,
+        "version": object,
+        "bright_t31": "float32",
+        "frp": "float32",
+        "daynight": object,
+    },
+    "VIIRS_nrt_dtypes": {
+        "latitude": "float32",
+        "longitude": "float32",
+        "bright_ti4": "float32",
+        "acq_date": object,
+        "acq_time": object,
+        "scan": "float32",
+        "track": "float32",
+        "satellite": object,
+        "instrument": object,
+        "confidence": object,
+        "version": object,
+        "bright_ti5": "float32",
+        "frp": "float32",
+        "daynight": object,
+    },
+}
 
 sql_datatypes = {
-    'SQL_rename': {
-        'GEOUNIT': 'admin',
-        },
-    'SQL_detections_dtypes': {
-        'id': 'int',
-        'latitude': 'float32',
-        'longitude': 'float32',
-        'frp': 'float32',
-        'daynight': 'int',
-        'type': 'int',
-        'date': 'int',
-        'lc': 'int',
-        'admin': 'int',
-        'event': 'int',
-        },
+    "SQL_rename": {
+        "GEOUNIT": "admin",
+    },
+    "SQL_detections_dtypes": {
+        "id": "int",
+        "latitude": "float32",
+        "longitude": "float32",
+        "frp": "float32",
+        "daynight": "int",
+        "type": "int",
+        "date": "int",
+        "lc": "int",
+        "admin": "int",
+        "event": "int",
+    },
+    "SQL_events_dtypes": {
+        "event": "int",
+        "active": "int",
+        "tot_size": "int",
+        "max_size": "int",
+        "start_date": "int",
+        "last_date": "int",
+        "latitude": "float32",
+        "longitude": "float32",
+        "admin": "int",
+        "lc1": "int",
+        "veg_ratio": "float32",
+        "continent": object,
+        "name": object,
+    },
+}
 
-    'SQL_events_dtypes': { 
-        'event': 'int',
-        'active': 'int',
-        'tot_size': 'int',
-        'max_size': 'int',
-        'start_date': 'int',
-        'last_date': 'int',
-        'latitude': 'float32',
-        'longitude': 'float32',
-        'admin': 'int',
-        'continent': object,
-        'name': object
-        }
-    }
 
 def get_project_root() -> Path:
     return Path(__file__).parent.parent
+
 
 def spatial_subset_dfr(dfr, bbox):
     """
@@ -151,15 +149,15 @@ def spatial_subset_dfr(dfr, bbox):
     Returns:
         pandas dataframe
     """
-    dfr = dfr[(dfr['latitude'] < bbox[0]) &
-                            (dfr['latitude'] > bbox[2])]
-    dfr = dfr[(dfr['longitude'] > bbox[1]) &
-                            (dfr['longitude'] < bbox[3])]
+    dfr = dfr[(dfr["latitude"] < bbox[0]) & (dfr["latitude"] > bbox[2])]
+    dfr = dfr[(dfr["longitude"] > bbox[1]) & (dfr["longitude"] < bbox[3])]
     return dfr
+
 
 class ModisGrid(object):
     """Class used for calculating position on MODIS
     sinusoidal grid..."""
+
     # height and width of MODIS tile in the projection plane (m)
     tile_size = 1111950
     # the western limit ot the projection plane (m)
@@ -179,7 +177,7 @@ class ModisGrid(object):
         Calculates the position of the points given in longitude latitude
         columns on the MODIS 500 metre resolution sinusoidal grid.
         Follows formalism given in the MCD64A1 product ATBD document (Giglio
-        et al., 2016). 
+        et al., 2016).
         Parameters
         ----------
         longitudes : (array) with longitudes.
@@ -195,16 +193,13 @@ class ModisGrid(object):
         lat_rad = np.deg2rad(latitudes)
         x = cls.earth_r * lon_rad * np.cos(lat_rad)
         y = cls.earth_r * lat_rad
-        tile_h = (np.floor((x - cls.x_min) /
-                  cls.tile_size)).astype(int)
-        tile_v = (np.floor((cls.y_max - y) /
-                  cls.tile_size)).astype(int)
+        tile_h = (np.floor((x - cls.x_min) / cls.tile_size)).astype(int)
+        tile_v = (np.floor((cls.y_max - y) / cls.tile_size)).astype(int)
         i_top = (cls.y_max - y) % cls.tile_size
         j_top = (x - cls.x_min) % cls.tile_size
         indy = (np.floor((i_top / cls.w_size) - 0.5)).astype(int)
         indx = (np.floor((j_top / cls.w_size) - 0.5)).astype(int)
         return tile_h, tile_v, indx, indy
-
 
     @classmethod
     def modis_sinusoidal_grid_index(cls, longitudes, latitudes):
@@ -228,10 +223,11 @@ class ModisGrid(object):
         index_y = indy + (tile_v * 2400)
         return index_x, index_y
 
+
 class FireDate(object):
-    """Class for datetime conversions
-    """
-    base_date = pd.Timestamp('1970-01-01', tz='utc')
+    """Class for datetime conversions"""
+
+    base_date = pd.Timestamp("1970-01-01", tz="utc")
 
     @classmethod
     def fire_dates(cls, dfr):
@@ -244,9 +240,9 @@ class FireDate(object):
             dates: pandas Series with datetimes.
         """
         dates = pd.to_datetime(
-            dfr['acq_date'] + ' ' +
-            dfr.loc[:, 'acq_time'].astype(str).str.zfill(4), utc=True
-            )
+            dfr["acq_date"] + " " + dfr.loc[:, "acq_time"].astype(str).str.zfill(4),
+            utc=True,
+        )
         return dates
 
     @classmethod
@@ -255,12 +251,12 @@ class FireDate(object):
         Args:
             dates (array like): pandas timedelta objects with dates
         Returns:
-            day_since : (array): with total days from 
+            day_since : (array): with total days from
             self.base_date to the date of fire detection.
         """
         day_since = (dates - cls.base_date).dt.days
         return day_since
-    
+
     @classmethod
     def unix_time(cls, datetimes):
         """pandas datetime to unix time conversion
@@ -270,4 +266,3 @@ class FireDate(object):
             unix time
         """
         return (datetimes - cls.base_date).dt.total_seconds().astype(int)
-        

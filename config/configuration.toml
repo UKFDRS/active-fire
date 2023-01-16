@@ -73,7 +73,8 @@ sql_create_events_table = """
         latitude   real NOT NULL,
         longitude  real NOT NULL,
         admin      integer,
-        lc         integer,
+        lc1        integer,
+        veg_ratio  real,
         continent  text,
         name       text
         );
