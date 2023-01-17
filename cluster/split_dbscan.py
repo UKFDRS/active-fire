@@ -20,18 +20,7 @@ class SplitDBSCAN(DBSCAN):
         self.edge_eps = edge_eps
         self.split_dim = (split_dim,)
 
-    def split(self, X, chunk_size):
-        # check if X is sorted along the split_dim
-        if not np.all(X[:, self.split_dim][:-1] <= X[:, self.split_dim][1:]):
-            raise ValueError(
-                "The dataset must be monotonically increasing (sorted) along the split_dim."
-            )
-
-        chunks = -(-(X.shape[self.split_dim]) // chunk_size)
-
-        pass
-
-    def active_flag(self, X):
+    def split(self, X):
         """Splits clusters into completed and active parts.
         The group membership of active points may change when
         clustering the following chunk or with influx of new data.
