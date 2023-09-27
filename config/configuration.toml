@@ -1,6 +1,7 @@
 [OS]
 
 data_path = '/home/tadas/activefire/firedata/data'
+#data_path = '/mnt/data2/active_fire/'
 lulc_data_path = '/mnt/data2/land_cover'
 admin_data_path = '/home/tadas/activefire/firedata/data'
 
@@ -12,13 +13,13 @@ chunk_size = 2000000
 
 [MODIS]
 
-base_url = 'https://nrt4.modaps.eosdis.nasa.gov/api/v2/content/archives/FIRMS/modis-c6.1/Global/MODIS_C6_1_Global_MCD14DL_NRT_'
+base_url = 'https://nrt3.modaps.eosdis.nasa.gov/api/v2/content/archives/FIRMS/modis-c6.1/Global/MODIS_C6_1_Global_MCD14DL_NRT_'
 nrt_dataset = 'nrt_complete.parquet'
 archive_end = '2021-12-31T23:59'
 
 [VIIRS_NPP]
-
-base_url = 'https://nrt4.modaps.eosdis.nasa.gov/api/v2/content/archives/FIRMS/suomi-npp-viirs-c2/Global/SUOMI_VIIRS_C2_Global_VNP14IMGTDL_NRT_'
+base_url = 'https://nrt3.modaps.eosdis.nasa.gov/api/v2/content/archives/FIRMS/suomi-npp-viirs-c2/Global/SUOMI_VIIRS_C2_Global_VNP14IMGTDL_NRT_'
+#base_url = 'https://nrt4.modaps.eosdis.nasa.gov/api/v2/content/archives/FIRMS/suomi-npp-viirs-c2/Global/SUOMI_VIIRS_C2_Global_VNP14IMGTDL_NRT_'
 nrt_dataset = 'nrt_complete_viirs_npp.parquet'
 archive_end = '2021-12-31T23:59'
 

@@ -138,14 +138,14 @@ class ProcSQL(prepare.PrepData):
     def populate_archive(self):
         """Populate database with active fire archive"""
         archive_dir = os.path.join(
-            self.config["OS"]["data_path"], self.sensor, "fire_archive*.parquet"
+            self.config["OS"]["data_path"], self.sensor, "fire_archive*.csv"
         )
         arch_files = glob.glob(archive_dir)
         arch_files.sort()
         print(arch_files)
         for file_name in arch_files:
             print(f"proc file {file_name}")
-            dfr = pd.read_parquet(file_name)
+            dfr = pd.read_csv(file_name)
             dfr = self.prepare_detections_dataset(dfr)
             self.dataframe_to_db(dfr)
 
