@@ -1,0 +1,82 @@
+[OS]
+
+data_path = '/home/tadas/activefire/firedata/data'
+#data_path = '/mnt/data2/active_fire/'
+lulc_data_path = '/mnt/data2/land_cover'
+admin_data_path = '/home/tadas/activefire/firedata/data'
+
+[CLUSTER]
+
+eps = 5
+min_samples = 1
+chunk_size = 2000000
+
+[MODIS]
+
+base_url = 'https://nrt3.modaps.eosdis.nasa.gov/api/v2/content/archives/FIRMS/modis-c6.1/Global/MODIS_C6_1_Global_MCD14DL_NRT_'
+nrt_dataset = 'nrt_complete.parquet'
+archive_end = '2021-12-31T23:59'
+
+[VIIRS_NPP]
+base_url = 'https://nrt3.modaps.eosdis.nasa.gov/api/v2/content/archives/FIRMS/suomi-npp-viirs-c2/Global/SUOMI_VIIRS_C2_Global_VNP14IMGTDL_NRT_'
+#base_url = 'https://nrt4.modaps.eosdis.nasa.gov/api/v2/content/archives/FIRMS/suomi-npp-viirs-c2/Global/SUOMI_VIIRS_C2_Global_VNP14IMGTDL_NRT_'
+nrt_dataset = 'nrt_complete_viirs_npp.parquet'
+archive_end = '2021-12-31T23:59'
+
+[VIIRS_NOAA]
+
+base_url = 'https://nrt4.modaps.eosdis.nasa.gov/api/v2/content/archives/FIRMS/noaa-20-viirs-c2/Global/J1_VIIRS_C2_Global_VJ114IMGTDL_NRT_'
+nrt_dataset = 'nrt_complete_viirs_noaa.parquet'
+archive_end = '2021-12-31T23:59'
+
+[SQL]
+
+sql_create_extinct_table = """
+    CREATE TABLE IF NOT EXISTS detections_extinct (
+        id        integer PRIMARY KEY,
+        latitude  real    NOT NULL,
+        longitude real    NOT NULL,
+        frp       real    NOT NULL,
+        daynight  integer NOT NULL,
+        type      integer NOT NULL,
+        date      integer NOT NULL,
+        lc        integer NOT NULL,
+        admin     integer,
+        event     integer NOT NULL,
+        FOREIGN KEY (event) REFERENCES events (event)
+        );
+    """
+
+sql_create_active_table = """
+    CREATE TABLE IF NOT EXISTS detections_active (
+        id        integer PRIMARY KEY,
+        latitude  real    NOT NULL,
+        longitude real    NOT NULL,
+        frp       real    NOT NULL,
+        daynight  integer NOT NULL,
+        type      integer NOT NULL,
+        date      integer NOT NULL,
+        lc        integer NOT NULL,
+        admin     integer,
+        event     integer NOT NULL,
+        FOREIGN KEY (event) REFERENCES events (event)
+        );
+    """
+
+sql_create_events_table = """
+    CREATE TABLE IF NOT EXISTS events (
+        event      integer PRIMARY KEY,
+        active     integer NOT NULL,
+        tot_size   integer NOT NULL,
+        max_size   integer NOT NULL,
+        start_date integer NOT NULL,
+        last_date  integer NOT NULL,
+        latitude   real NOT NULL,
+        longitude  real NOT NULL,
+        admin      integer,
+        lc1        integer,
+        veg_ratio  real,
+        continent  text,
+        name       text
+        );
+    """

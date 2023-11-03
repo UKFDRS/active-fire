@@ -12,13 +12,13 @@ class SplitDBSCAN(DBSCAN):
         metric="euclidean",
     ):
         super().__init__(
-                eps=eps,
-                min_samples=min_samples,
-                metric=metric,
-                )
+            eps=eps,
+            min_samples=min_samples,
+            metric=metric,
+        )
         self.eps = eps
         self.edge_eps = edge_eps
-        self.split_dim = split_dim,
+        self.split_dim = (split_dim,)
 
     def split(self, X):
         """Splits clusters into completed and active parts.
@@ -34,17 +34,15 @@ class SplitDBSCAN(DBSCAN):
             active_mask : (bool) a mask with True values indicating
             self.labels_ of active clusters.
         """
-        # chunk_edge represents max value in chunk along the 
+        # chunk_edge represents max value in chunk along the
         # split_dimension
         chunk_edge = X[:, self.split_dim].max()
-
         # whithin reach is a mask of samples which are within edge_eps
         # distance from the chunk edge
         within_reach = X[:, self.split_dim] >= (chunk_edge - self.edge_eps)
-
         # unique labels of all within reach samples
-        active_labels = np.unique(self.labels_[within_reach])
-
+        print(within_reach.shape, self.labels_.shape)
+        active_labels = np.unique(self.labels_[within_reach.squeeze(axis=1)])
         # mask indicating all within reach self.labels_
         active_mask = np.isin(self.labels_, active_labels)
         return active_mask
