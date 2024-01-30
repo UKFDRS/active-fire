@@ -4,6 +4,7 @@ data_path = '/home/tadas/activefire/firedata/data'
 #data_path = '/mnt/data2/active_fire/'
 lulc_data_path = '/mnt/data2/land_cover'
 admin_data_path = '/home/tadas/activefire/firedata/data'
+uk_regions_file = '/home/tadas/activefire/firedata/data/HadUKP_regions.shp'
 
 [CLUSTER]
 

@@ -1,7 +1,8 @@
 import os
 import glob
 
-# os.environ['PROJ_LIB'] = '/home/tadas/.pyenv/versions/miniconda3-4.7.12/share/proj'
+import config
+
 import pandas as pd
 import numpy as np
 import geopandas as gpd
@@ -28,6 +29,17 @@ def cluster(dfr, eps):
     active_mask = sd.split(ars)
     return sd.labels_, active_mask
 
+def get_UK_climate_region(dfr):
+    uk_regions_file_name = config.config_dict['OS']['uk_regions_file']
+    regions = gpd.read_file(uk_regions_file_name)
+    regions = regions.set_crs('EPSG:27700')
+    regions = regions.to_crs('EPSG:4326')
+    geometry = gpd.points_from_xy(dfr.longitude, dfr.latitude)
+    gdf = gpd.GeoDataFrame(dfr, geometry=geometry, crs=4326)
+    pts = gpd.sjoin(regions, gdf)
+    pts = pts.drop(['geometry', 'index_right'], axis=1)
+    df = pd.DataFrame(pts)
+    return df
 
 def get_uk_country(dfr):
     countries = gpd.read_file(
@@ -240,18 +252,26 @@ if __name__ == "__main__":
     sql_str = f"SELECT * FROM detections_extinct WHERE admin={code}"
     sql_stra = f"SELECT * FROM detections_active WHERE admin={code}"
     dfr = db.return_many_values(sql_str)
+    dfr['active'] = 0
     dfra = db.return_many_values(sql_stra)
-    df = pd.concat([dfr, dfra])
-    df = df.rename({"lc": "lc_m"}, axis=1)
-    lc = uk_ceh_lc(df)
-    df["lc"] = lc
-    cor_lc = corine_lc(df)
-    df["lc_c"] = cor_lc
+    dfra['active'] = 0
+    print('data extracted')
+    if (len(dfr) > 0) and (len(dfra) > 0):
+        dfr = pd.concat([dfr, dfra])
+    dfr = dfr.rename({"lc": "lc_m"}, axis=1)
+    lc = uk_ceh_lc(dfr)
+    print('uk ceh')
+    dfr["lc"] = lc
+    cor_lc = corine_lc(dfr)
+    print('corine')
+    dfr["lc_c"] = cor_lc
 
-    df = get_uk_country(df)
-    dfr = clean_nrt(df)
-
-    print(dfr.columns)
+    dfr = get_uk_country(dfr)
+    print('country')
+    dfr = get_UK_climate_region(dfr)
+    print('region')
+    dfr = clean_nrt(dfr)
+    print('clean nrt')
     """
     eps = 5
     columns = ['latitude', 'longitude', 'date']
