@@ -6,6 +6,11 @@ lulc_data_path = '/mnt/data2/land_cover'
 admin_data_path = '/home/tadas/activefire/firedata/data'
 uk_regions_file = '/home/tadas/activefire/firedata/data/HadUKP_regions.shp'
 
+[TASKS]
+
+fetch_nrt_data = 'fetched_nrt.parquet'
+processed_nrt_data = 'processed_nrt_data.parquet'
+
 [CLUSTER]
 
 eps = 5
