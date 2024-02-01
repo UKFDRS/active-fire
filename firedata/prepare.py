@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 from pyhdf import SD
 
-import config
-from firedata._utils import dataset_dtypes, sql_datatypes, ModisGrid, FireDate
+from .. import config
+from ._utils import dataset_dtypes, sql_datatypes, ModisGrid, FireDate
 
 
 def group_mode(

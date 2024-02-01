@@ -2,8 +2,8 @@ import os
 import sqlite3
 import pandas as pd
 from sqlite3 import Error
-import config
-from firedata._utils import sql_datatypes
+from activefire import config
+from activefire.firedata._utils import sql_datatypes
 
 
 class DataBase(object):

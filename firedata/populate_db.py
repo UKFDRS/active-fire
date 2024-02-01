@@ -10,12 +10,14 @@ import time
 import numpy as np
 import pandas as pd
 
-import config
-from firedata import fetch
-from firedata import database
-from firedata import prepare
-from firedata import _utils
-from cluster import split_dbscan
+from pathlib import Path
+
+from .. import config
+from activefire.firedata import fetch
+from activefire.firedata import database
+from activefire.firedata import prepare
+from activefire.firedata import _utils
+from activefire.cluster import split_dbscan
 
 
 class ProcSQL(prepare.PrepData):
@@ -28,9 +30,10 @@ class ProcSQL(prepare.PrepData):
         self.db = database.DataBase(sensor)
 
     def get_nrt(self):
-        """Fetches near-real time active fire data from FIRMS. The data
+        """Faetches near-real time active fire data from FIRMS. The data
         is fetched for each day (inclusive) between the last day of
         data stored in the database and current day."""
+        nrt_file_name = Path(self.config["OS"]["data_path"], self.config["TASKS"]["fetch_nrt_data"])
         base_url = self.config[self.sensor]["base_url"]
         fetcher = fetch.FetchNRT(self.sensor, self.config["nrt_token"], base_url)
         start_date = pd.Timestamp(self.last_date(), tz="utc")
@@ -38,7 +41,11 @@ class ProcSQL(prepare.PrepData):
         dfr = fetcher.fetch(start_date, end_date)
         if dfr is not None:
             dfr = dfr.reset_index(drop=True)
-        return dfr
+        if len(dfr>0):
+            dfr.to_parquet(nrt_file_name)
+            return True
+        else:
+            return False
 
     def cluster_dataframe(self, dfr: pd.DataFrame):
         """Convenience method to cluster dataset passed as pandas DataFrame (dfr).
