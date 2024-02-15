@@ -41,11 +41,58 @@ class ProcSQL(prepare.PrepData):
         dfr = fetcher.fetch(start_date, end_date)
         if dfr is not None:
             dfr = dfr.reset_index(drop=True)
-        if len(dfr>0):
+        if len(dfr)>0:
             dfr.to_parquet(nrt_file_name)
             return True
         else:
             return False
+
+    def transform_nrt(self):
+        """Prepares near-real time active fire data from FIRMS. A wrapper
+        around prepare_detections_dataset and cluster routines"""
+        raw_nrt_file_name = Path(self.config["OS"]["data_path"], self.config["TASKS"]["fetch_nrt_data"])
+        transformed_detections_file_name = Path(self.config["OS"]["data_path"], self.config["TASKS"]["transformed_detections_nrt_data"])
+        transformed_events_file_name = Path(self.config["OS"]["data_path"], self.config["TASKS"]["transformed_events_nrt_data"])
+        dataset = pd.read_parquet(raw_nrt_file_name)
+        dataset = self.prepare_detections_dataset(dataset)
+        self.consistency_check(dataset)
+        dataset = self.increment_index(dataset)
+
+        active = self.active_detections()
+        dataset = pd.concat([active, dataset])
+        # drop duplicates
+        dataset = dataset.drop_duplicates(subset=["longitude", "latitude", "date"])
+        # cluster new chunk and active
+        event, active_flag = self.cluster_dataframe(dataset)
+        dataset["event"] = event.astype(int)
+        # Try to preserve past event labels
+        dataset["event"] = self.event_ids(dataset)
+        dataset["active"] = active_flag.astype(int)
+
+        events_dataset = self.prepare_event_dataset(dataset)
+
+        dataset.to_parquet(transformed_detections_file_name)
+        events_dataset.to_parquet(transformed_events_file_name)
+
+        # remove raw nrt dataset
+        raw_nrt_file_name.unlink()
+
+    def load_nrt(self):
+        """Loads transformed near-real FIRMS fire data to the database. A wrapper
+        around self.populate_db"""
+        transformed_detections_file_name = Path(self.config["OS"]["data_path"], self.config["TASKS"]["transformed_detections_nrt_data"])
+        transformed_events_file_name = Path(self.config["OS"]["data_path"], self.config["TASKS"]["transformed_events_nrt_data"])
+        dataset = pd.read_parquet(transformed_detections_file_name)
+        events_dataset = pd.read_parquet(transformed_events_file_name)
+        # delete active detections from the database
+        self.delete_active()
+        self.db.insert_events(events_dataset)
+        self.db.insert_active(dataset[dataset.active == 1])
+        self.db.insert_extinct(dataset[dataset.active == 0])
+
+        # remove transformed datasets
+        transformed_detections_file_name.unlink()
+        transformed_events_file_name.unlink()
 
     def cluster_dataframe(self, dfr: pd.DataFrame):
         """Convenience method to cluster dataset passed as pandas DataFrame (dfr).
@@ -155,6 +202,7 @@ class ProcSQL(prepare.PrepData):
             dfr = pd.read_csv(file_name)
             dfr = self.prepare_detections_dataset(dfr)
             self.dataframe_to_db(dfr)
+
 
     def dataframe_to_db(self, dfr: pd.DataFrame):
         """Prepare, cluster and insert active fire detections
