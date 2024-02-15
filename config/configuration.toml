@@ -9,7 +9,8 @@ uk_regions_file = '/home/tadas/activefire/firedata/data/HadUKP_regions.shp'
 [TASKS]
 
 fetch_nrt_data = 'fetched_nrt.parquet'
-processed_nrt_data = 'processed_nrt_data.parquet'
+transformed_detections_nrt_data = 'transformed_detections_nrt_data.parquet'
+transformed_events_nrt_data = 'transformed_events_nrt_data.parquet'
 
 [CLUSTER]
 
