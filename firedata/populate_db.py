@@ -39,9 +39,13 @@ class ProcSQL(prepare.PrepData):
         start_date = pd.Timestamp(self.last_date(), tz="utc")
         end_date = pd.Timestamp.utcnow()
         dfr = fetcher.fetch(start_date, end_date)
+        dfr = self.prepare_detections_dataset(dfr)
+        new_data = self.new_data_check(dfr)
+        print("new_data_check: ", new_data)
         if dfr is not None:
             dfr = dfr.reset_index(drop=True)
-        if len(dfr)>0:
+        if len(dfr)>0 and new_data:
+            print("fetch - writing nrt data to file")
             dfr.to_parquet(nrt_file_name)
             return True
         else:
@@ -54,11 +58,13 @@ class ProcSQL(prepare.PrepData):
         transformed_detections_file_name = Path(self.config["OS"]["data_path"], self.config["TASKS"]["transformed_detections_nrt_data"])
         transformed_events_file_name = Path(self.config["OS"]["data_path"], self.config["TASKS"]["transformed_events_nrt_data"])
         dataset = pd.read_parquet(raw_nrt_file_name)
-        dataset = self.prepare_detections_dataset(dataset)
         self.consistency_check(dataset)
         dataset = self.increment_index(dataset)
 
         active = self.active_detections()
+        min_date_active = pd.to_datetime(active.date.min(), unit="s")
+        max_date_active = pd.to_datetime(active.date.max(), unit="s")
+        print("active shape: ", active.shape, min_date_active, max_date_active)
         dataset = pd.concat([active, dataset])
         # drop duplicates
         dataset = dataset.drop_duplicates(subset=["longitude", "latitude", "date"])
@@ -71,11 +77,10 @@ class ProcSQL(prepare.PrepData):
 
         events_dataset = self.prepare_event_dataset(dataset)
 
+        max_date_dfr = pd.to_datetime(dataset.date.max(), unit="s")
+        print("writing transformed detections max date : ", max_date_dfr)
         dataset.to_parquet(transformed_detections_file_name)
         events_dataset.to_parquet(transformed_events_file_name)
-
-        # remove raw nrt dataset
-        raw_nrt_file_name.unlink()
 
     def load_nrt(self):
         """Loads transformed near-real FIRMS fire data to the database. A wrapper
@@ -83,12 +88,19 @@ class ProcSQL(prepare.PrepData):
         transformed_detections_file_name = Path(self.config["OS"]["data_path"], self.config["TASKS"]["transformed_detections_nrt_data"])
         transformed_events_file_name = Path(self.config["OS"]["data_path"], self.config["TASKS"]["transformed_events_nrt_data"])
         dataset = pd.read_parquet(transformed_detections_file_name)
+        max_date_dfr = pd.to_datetime(dataset.date.max(), unit="s")
+        min_date_dfr = pd.to_datetime(dataset.date.min(), unit="s")
+        print("load reading transformed detections max date : ", dataset.shape, max_date_dfr)
+        print("load reading transformed detections min date : ", dataset.shape, min_date_dfr)
         events_dataset = pd.read_parquet(transformed_events_file_name)
         # delete active detections from the database
         self.delete_active()
+
+        print("last date in db before insert: ", pd.Timestamp(self.last_date(), tz="utc"))
         self.db.insert_events(events_dataset)
         self.db.insert_active(dataset[dataset.active == 1])
         self.db.insert_extinct(dataset[dataset.active == 0])
+        print("last date in db after insert: ", pd.Timestamp(self.last_date(), tz="utc"))
 
         # remove transformed datasets
         transformed_detections_file_name.unlink()
@@ -141,7 +153,8 @@ class ProcSQL(prepare.PrepData):
 
     def last_date(self):
         """Return record end datetime."""
-        sql_string = "SELECT date(max(date), 'unixepoch')" "FROM detections_active"
+        # sql_string = "SELECT date(max(date), 'unixepoch')" "FROM detections_active"
+        sql_string = "SELECT datetime(max(date), 'unixepoch')" "FROM detections_active"
         max_date = self.db.return_single_value(sql_string)
         return max_date
 
@@ -173,6 +186,14 @@ class ProcSQL(prepare.PrepData):
         dataset["id"] += id_increment
         return dataset
 
+    def new_data_check(self, dfr):
+        """Check if dfr contains new data (not yet in database)"""
+        max_date_db = pd.Timestamp(self.last_date())
+        max_date_dfr = pd.to_datetime(dfr.date.max(), unit="s")
+        print('max date db: ', max_date_db)
+        print('max date dfr: ', max_date_dfr)
+        return max_date_db < max_date_dfr
+
     def consistency_check(self, dfr):
         """Verify if the fire detections dataset (dfr) is consistent
         in time with the records in detections_active in the database.
@@ -187,7 +208,7 @@ class ProcSQL(prepare.PrepData):
         print(f"last date in db {max_date_db}")
         print(f"first date in nrt {min_date_dfr}")
         print("difference in days", days_dif)
-        assert -1 < days_dif < 2, "DataFrame is not consistent with db"
+        assert -2 < days_dif < 2, "DataFrame is not consistent with db"
 
     def populate_archive(self):
         """Populate database with active fire archive"""
