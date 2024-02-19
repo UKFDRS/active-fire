@@ -1,11 +1,12 @@
 import os
 import glob
 
-import config
+from pathlib import Path
 
 import pandas as pd
 import numpy as np
 import geopandas as gpd
+from activefire.config import config_dict
 from firedata.database import DataBase
 from firedata._utils import FireDate, ModisGrid, spatial_subset_dfr, sql_datatypes
 from cluster.split_dbscan import SplitDBSCAN
@@ -30,7 +31,7 @@ def cluster(dfr, eps):
     return sd.labels_, active_mask
 
 def get_UK_climate_region(dfr):
-    uk_regions_file_name = config.config_dict['OS']['uk_regions_file']
+    uk_regions_file_name = config_dict['OS']['uk_regions_file']
     regions = gpd.read_file(uk_regions_file_name)
     regions = regions.set_crs('EPSG:27700')
     regions = regions.to_crs('EPSG:4326')
@@ -247,8 +248,9 @@ def clean_viirs(dfr):
 
 if __name__ == "__main__":
     db = DataBase("VIIRS_NPP")
-    cn = pd.read_parquet("firedata/data/countries_continents.parquet")
+    cn = pd.read_parquet(Path(config_dict['OS']['data_path'], "countries_continents.parquet"))
     code = cn[cn.ISOCODE == "GBR"]["Value"].item()
+    print("GBR code: ", code)
     sql_str = f"SELECT * FROM detections_extinct WHERE admin={code}"
     sql_stra = f"SELECT * FROM detections_active WHERE admin={code}"
     dfr = db.return_many_values(sql_str)
