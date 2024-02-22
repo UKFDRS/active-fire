@@ -5,6 +5,9 @@ data_path = '/home/tadas/activefire/firedata/data'
 lulc_data_path = '/mnt/data2/land_cover'
 admin_data_path = '/home/tadas/activefire/firedata/data'
 uk_regions_file = '/home/tadas/activefire/firedata/data/HadUKP_regions.shp'
+uk_lc_fname = "/home/tadas/modFire/lc_agb/data/LCD_2018.tif"
+corine_lc_fname = "/home/tadas/modFire/data/corine_land_cover/U2018_CLC2018_V2020_20u1.tif"
+countries_fname = "/home/tadas/modFire/fdi/data/ne_50m_admin_0_map_subunits.shp"
 
 [TASKS]
 
